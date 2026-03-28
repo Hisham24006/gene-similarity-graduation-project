@@ -1,36 +1,49 @@
 from Bio import SeqIO
-import Levenshtein
+from Bio.Align import PairwiseAligner, substitution_matrices
+import os
 
-# Load genes
-gene_db = {}
-for record in SeqIO.parse("genes.fasta", "fasta"):
-    gene_db[record.id] = str(record.seq)
+# 1. LOAD DATA (Keep your FASTA loading logic)
+fasta_path = "genes.fasta"
+if not os.path.exists(fasta_path):
+    print(f"Error: {fasta_path} not found. Ensure it's in the same folder.")
+    exit()
 
-print("Loaded genes:", gene_db.keys())
+# Using dictionary comprehension to load genes efficiently
+genes = {record.id: str(record.seq) for record in SeqIO.parse(fasta_path, "fasta")}
 
+# 2. THE UPGRADE: Setup Professional Scoring
+# We use BLOSUM62 - the industry standard for biological similarity
+matrix = substitution_matrices.load("BLOSUM62")
 
-# Similarity function
-def similarity_score(seq1, seq2):
-    distance = Levenshtein.distance(seq1, seq2)
-    return 1 - distance / max(len(seq1), len(seq2))
+aligner = PairwiseAligner()
+aligner.substitution_matrix = matrix
+aligner.mode = 'local'  # Local alignment (Smith-Waterman) is better for different length genes
 
+# Biological penalties: Nature hates gaps
+aligner.open_gap_score = -10
+aligner.extend_gap_score = -0.5
 
-# Query gene (you can change this)
-query_gene = gene_db["BRCA1"]
+# 3. ANALYSIS LOGIC
+query_id = "BRCA1"
+if query_id not in genes:
+    print(f"Error: {query_id} not found in {fasta_path}")
+    exit()
 
-
-# Compare with all genes
+query_seq = genes[query_id]
 results = []
-for gene_id, seq in gene_db.items():
-    score = similarity_score(query_gene, seq)
-    results.append((gene_id, score))
 
+print(f"--- Running Tactical Bio-Alignment for {query_id} ---")
 
-# Sort results
+for target_id, target_seq in genes.items():
+    # Calculate the raw biological score
+    score = aligner.score(query_seq, target_seq)
+    
+    # Normalize against a perfect match (query vs itself)
+    max_score = aligner.score(query_seq, query_seq)
+    similarity = max(0, score / max_score)
+    results.append((target_id, similarity))
+
+# 4. OUTPUT (Sorted by highest similarity)
 results.sort(key=lambda x: x[1], reverse=True)
-
-
-# Print top matches
-print("\nTop similar genes to BRCA1:\n")
 for gene, score in results:
-    print(f"{gene}: {score:.2f}")
+    print(f"{gene}: {score:.4f}")
