@@ -47,3 +47,21 @@ for target_id, target_seq in genes.items():
 results.sort(key=lambda x: x[1], reverse=True)
 for gene, score in results:
     print(f"{gene}: {score:.4f}")
+    # ... (previous code above)
+
+# 4. VISUALIZATION (The "War Room" View)
+print(f"\n--- Detailed Alignment: {query_id} vs {results[1][0]} ---")
+
+# Get the best alignment for the top match (excluding itself)
+top_match_id = results[1][0]
+top_match_seq = genes[top_match_id]
+alignments = aligner.align(query_seq, top_match_seq)
+
+# Display the first (best) alignment found
+if alignments:
+    best_alignment = alignments[0]
+    print(f"Biological Score: {results[1][1]:.4f}")
+    print("Best Local Alignment Segment:\n")
+    print(best_alignment)
+else:
+    print("No significant local alignment found.")
