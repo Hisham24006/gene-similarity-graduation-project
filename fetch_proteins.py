@@ -1,3 +1,7 @@
+import ssl
+
+ssl._create_default_https_context = ssl._create_unverified_context
+
 from Bio import Entrez
 
 Entrez.email = "u22105542@sharjah.ac.ae"
