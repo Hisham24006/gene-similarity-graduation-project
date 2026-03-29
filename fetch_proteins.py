@@ -17,7 +17,7 @@ for gene in genes:
     handle = Entrez.esearch(
         db="protein",
         term=f"{gene}[Gene] AND Homo sapiens[Organism] AND refseq[filter]",
-        retmax=25   # 20 genes × 25 = ~500 proteins
+        retmax=100  # 20 genes × 25 = ~500 proteins
     )
     record = Entrez.read(handle)
 
