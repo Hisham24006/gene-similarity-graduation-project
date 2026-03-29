@@ -16,11 +16,13 @@ all_sequences = []
 for gene in genes:
     handle = Entrez.esearch(
         db="protein",
-        term=f"{gene}[Gene] AND Homo sapiens[Organism] AND refseq[filter]",
+        term=f"{gene} AND Homo sapiens[Organism]",
         retmax=100  # 20 genes × 25 = ~500 proteins
     )
     record = Entrez.read(handle)
-
+    
+    print(f"{gene}: {len(record['IdList'])} proteins found")
+    
     for protein_id in record["IdList"]:
         fetch = Entrez.efetch(
             db="protein",
