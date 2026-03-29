@@ -1,6 +1,6 @@
 from Bio import Entrez
 
-Entrez.email = "your_email@example.com"
+Entrez.email = "u22105542@sharjah.ac.ae"
 
 genes = [
     "TP53","BRCA1","KRAS","EGFR","HBB","GAPDH","MDM2","HRAS","MYC","AKT1",
