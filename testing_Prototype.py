@@ -55,7 +55,7 @@ class GeneDatabase:
 # ==========================================
 class BioFetcher:
     def __init__(self, email):
-        Entrez.email = email
+        Entrez.email = "u22105542@sharjah.ac.ae"
 
     def fetch_ncbi(self, symbol, db_type="protein"):
         """Fetches from NCBI (db='protein' or 'nucleotide')."""
@@ -113,7 +113,7 @@ class SimilarityEngine:
 # ==========================================
 if __name__ == "__main__":
     # Setup
-    user_email = "hishamalsaadi06@gmail.com" # From your prototype.py
+    user_email = "u22105542@sharjah.ac.ae" # From your prototype.py
     db = GeneDatabase()
     fetcher = BioFetcher(user_email)
     engine = SimilarityEngine()
