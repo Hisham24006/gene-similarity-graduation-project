@@ -119,6 +119,33 @@ class GeneDatabase:
         ''', (seq_type,))
         return cursor.fetchall()
 
+    def get_all_sequences_with_isoform(self, seq_type):
+        """
+        Returns list of (symbol, isoform_id, sequence) for all isoforms of a given type.
+        Used by the similarity engine when isoform-level detail is needed.
+        """
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT g.symbol, s.isoform_id, s.sequence
+            FROM sequences s
+            JOIN genes g ON s.gene_id = g.id
+            WHERE s.type = ?
+        ''', (seq_type,))
+        return cursor.fetchall()
+
+    def get_isoform_sequence(self, symbol, seq_type, isoform_id):
+        """Returns the sequence for a specific isoform. None if not found."""
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT s.sequence
+            FROM sequences s
+            JOIN genes g ON s.gene_id = g.id
+            WHERE g.symbol = ? AND s.type = ? AND s.isoform_id = ?
+            LIMIT 1
+        ''', (symbol, seq_type, isoform_id))
+        row = cursor.fetchone()
+        return row[0] if row else None
+
     def get_gene_sequence(self, symbol, seq_type):
         """Returns the first sequence of a given type for a gene. None if not found."""
         cursor = self.conn.cursor()

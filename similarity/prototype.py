@@ -1,88 +1,100 @@
 import ssl
 import os
+import sys
 
-# This tells the system to ignore SSL certificate verification
-if (not os.environ.get('PYTHONHTTPSVERIFY', '') and getattr(ssl, '_create_unverified_context', None)):
+if not os.environ.get('PYTHONHTTPSVERIFY', '') and getattr(ssl, '_create_unverified_context', None):
     ssl._create_default_https_context = ssl._create_unverified_context
-from Bio import SeqIO
-from Bio import Entrez
+
+# Add database/ folder to path so we can import GeneDatabase
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'database'))
+
+from Bio import SeqIO, Entrez
 from Bio.Align import PairwiseAligner, substitution_matrices
-import os
 from io import StringIO
+from database_manager import GeneDatabase
 
-# --- CONFIGURATION (Protein Mode) ---
+# --- Configuration ---
 Entrez.email = "hishamalsaadi06@gmail.com"
-fasta_path = "proteins.fasta" # Rename your local DB file to reflect Proteins
+DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'database', 'gene_vault.db')
 
-# Setup the Protein Engine (BLOSUM62)
+# --- Aligner setup (BLOSUM62) ---
 aligner = PairwiseAligner()
 aligner.substitution_matrix = substitution_matrices.load("BLOSUM62")
 aligner.mode = 'local'
 aligner.open_gap_score = -10
 aligner.extend_gap_score = -0.5
 
-# --- FUNCTIONS ---
-# --- FUNCTIONS ---
+
 def fetch_protein_from_ncbi(gene_name):
-    """Scouts NCBI for a human PROTEIN sequence."""
-    print(f"\n--- Scouting NCBI Protein Database for: {gene_name} ---")
+    """Fetches the top RefSeq protein for a gene from NCBI.
+    Returns (isoform_id, sequence) or (None, None).
+    """
+    print(f"\n--- Fetching {gene_name} from NCBI ---")
     try:
-        # DB changed to 'protein'
-        handle = Entrez.esearch(db="protein", term=f"{gene_name}[Gene Name] AND human[Organism] AND srcdb_refseq[PROP]", retmax=1)
+        handle = Entrez.esearch(
+            db="protein",
+            term=f"{gene_name}[Gene Name] AND human[Organism] AND srcdb_refseq[PROP]",
+            retmax=1
+        )
         record = Entrez.read(handle)
         handle.close()
 
         if not record["IdList"]:
-            print(f"No protein results found for {gene_name}")
-            return None
+            print(f"No results found for {gene_name}")
+            return None, None
 
-        protein_id = record["IdList"][0]
-        handle = Entrez.efetch(db="protein", id=protein_id, rettype="fasta", retmode="text")
-        fasta_data = handle.read()
+        handle = Entrez.efetch(
+            db="protein", id=record["IdList"][0],
+            rettype="fasta", retmode="text"
+        )
+        seq_record = SeqIO.read(StringIO(handle.read()), "fasta")
         handle.close()
 
-        seq_record = SeqIO.read(StringIO(fasta_data), "fasta")
-        print(f"Successfully retrieved Protein {gene_name} (Length: {len(seq_record.seq)} AA)")
-        return str(seq_record.seq)
+        print(f"Retrieved isoform : {seq_record.id}")
+        print(f"Length            : {len(seq_record.seq)} AA")
+        return seq_record.id, str(seq_record.seq)
+
     except Exception as e:
-        print(f"Failed to fetch Protein {gene_name}: {e}")
-        return None
+        print(f"Failed to fetch {gene_name}: {e}")
+        return None, None
 
-# --- EXECUTION ---
-if not os.path.exists(fasta_path):
-    print(f"Error: {fasta_path} not found. Ensure it's in the same folder.")
-    exit()
 
-# Load local database
-gene_db = {record.id: str(record.seq) for record in SeqIO.parse(fasta_path, "fasta")}
+# --- Main ---
+db = GeneDatabase(db_path=DB_PATH)
 
-# 1. Ask for input
-target_gene = input("Enter a gene name to fetch from NCBI (e.g., TP53, BRCA2, KRAS): ")
-query_seq = fetch_protein_from_ncbi(target_gene)
+print("Genes in database:", ", ".join(db.list_genes()))
+
+target_gene = input("\nEnter a gene name to search (e.g., TP53, BRCA2, KRAS): ").upper()
+query_isoform_id, query_seq = fetch_protein_from_ncbi(target_gene)
 
 if query_seq:
+    # get_all_sequences now also returns isoform_id
+    all_seqs = db.get_all_sequences_with_isoform("protein")
     results = []
-    print(f"\n--- Comparing {target_gene} against local database ---")
-    
-    # 2. Run Biological Alignment Loop
-    for gene_id, local_seq in gene_db.items():
+
+    print(f"\n--- Comparing {target_gene} ({query_isoform_id}) against {len(all_seqs)} isoforms in database ---")
+
+    for symbol, isoform_id, local_seq in all_seqs:
         score = aligner.score(query_seq, local_seq)
-        # Normalize against perfect match (query vs itself)
         max_score = aligner.score(query_seq, query_seq)
         similarity = max(0, score / max_score)
-        results.append((gene_id, similarity))
+        results.append((symbol, isoform_id, similarity))
 
-    # 3. Sort and Print Similarity Scores
-    results.sort(key=lambda x: x[1], reverse=True)
-    for gene, score in results:
-        print(f"{gene}: {score:.4f}")
+    results.sort(key=lambda x: x[2], reverse=True)
 
-    # 4. Visualization of top match
-    if len(results) > 0:
-        top_id = results[0][0]
-        top_similarity = results[0][1]
-        print(f"\n--- Best Local Alignment: {target_gene} vs {top_id} ---")
-        print(f"Similarity Score: {top_similarity:.4f}")
-        
-        alignments = aligner.align(query_seq, gene_db[top_id])
-        print(alignments[0])
+    print("\nTop 10 most similar isoforms:")
+    print(f"  {'Gene':<10} {'Isoform':<25} {'Score'}")
+    print(f"  {'-'*10} {'-'*25} {'-'*6}")
+    for symbol, isoform_id, score in results[:10]:
+        print(f"  {symbol:<10} {isoform_id:<25} {score:.4f}")
+
+    top_symbol, top_isoform_id, top_sim = results[0]
+    print(f"\n--- Best match ---")
+    print(f"  Query   : {target_gene} | {query_isoform_id}")
+    print(f"  Match   : {top_symbol} | {top_isoform_id}")
+    print(f"  Score   : {top_sim:.4f}")
+    print(f"\n--- Alignment ---")
+    top_seq = db.get_isoform_sequence(top_symbol, "protein", top_isoform_id)
+    print(aligner.align(query_seq, top_seq)[0])
+
+db.close()
