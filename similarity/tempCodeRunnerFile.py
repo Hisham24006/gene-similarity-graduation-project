@@ -2,7 +2,7 @@ import ssl
 import os
 import sys
 
-if not os.environ.get('PYTHONHTTPSVERIFY', '') and getattr(ssl, '_create_unverified_context', None):
+if not os.environ.get('PYTHONHTTPSVERIFY', '') and getattr(ssl, '_create_unverified_context', None)):
     ssl._create_default_https_context = ssl._create_unverified_context
 
 # Add database/ folder to path so we can import GeneDatabase
@@ -122,21 +122,21 @@ def get_query():
                 break
             lines.append(line.strip())
 
-        # Handle FASTA format (first line starts with >)
-        if lines and lines[0].startswith(">"):
-            header = lines[0]
-            seq = clean_sequence("".join(lines[1:]))
-            label = header[1:].split()[0]
+        raw = "".join(lines)
+
+        # Handle FASTA format (starts with >)
+        if raw.startswith(">"):
+            fasta_lines = raw.split("\n")
+            header = fasta_lines[0]
+            seq = clean_sequence("".join(fasta_lines[1:]))
+            label = header[1:].split()[0]  # use first word after > as label
             print(f"\nDetected FASTA format.")
             print(f"Label  : {label}")
             print(f"Length : {len(seq)} AA")
-            if len(seq) == 0:
-                print("Error: no sequence found after the header line.")
-                return None, None, None
             return label, label, seq
 
-        # Plain sequence — join all lines
-        seq = clean_sequence("".join(lines))
+        # Plain sequence
+        seq = clean_sequence(raw)
         if is_protein_sequence(seq):
             print(f"\nSequence accepted.")
             print(f"Length : {len(seq)} AA")
