@@ -38,10 +38,11 @@ def plot_bar_chart(results, query_gene, output_dir="results"):
     # Take top 10, skip self-matches (score == 1.0 on all metrics)
     top = results[:10]
 
-    labels   = [f"{s}\n{i[:12]}" for s, i, b, k, e, a in top]
-    blosum   = [b for s, i, b, k, e, a in top]
-    kmer     = [k for s, i, b, k, e, a in top]
-    edit     = [e for s, i, b, k, e, a in top]
+    labels   = [f"{s}\n{i[:12]}" for s, i, b, k, e, m, a in top]
+    blosum  = [b for s, i, b, k, e, m, a in top]
+    kmer    = [k for s, i, b, k, e, m, a in top]
+    edit    = [e for s, i, b, k, e, m, a in top]
+    motif   = [m for s, i, b, k, e, m, a in top]
 
     x      = np.arange(len(labels))
     width  = 0.25
