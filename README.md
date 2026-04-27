@@ -147,4 +147,9 @@ pip install -r requirements.txt
 
 ## Authors
 
-Hisham Alsaadi — University of Sharjah
+**Hisham Alsadi** — U23100356  
+**Obaid Alabdouli** — U23105535  
+**Yousef Ahmed Ibrahim** — U22105542  
+**Ahmed Alsamiri** — U23103109  
+
+University of Sharjah
