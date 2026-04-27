@@ -12,7 +12,8 @@ from Bio import SeqIO, Entrez
 from Bio.Align import PairwiseAligner, substitution_matrices
 from io import StringIO
 from database_manager import GeneDatabase
-from metrics import kmer_similarity
+from metrics import kmer_similarity, edit_distance_similarity
+from visualizer import plot_bar_chart, plot_heatmap
 
 # --- Configuration ---
 Entrez.email = "hishamalsaadi06@gmail.com"
@@ -162,42 +163,74 @@ if query_seq:
 
     print(f"\n--- Running similarity metrics for {target_gene} ({query_isoform_id}) ---")
     print(f"    Database : {len(all_seqs)} protein isoforms")
-    print(f"    Metrics  : BLOSUM62 alignment, K-mer (k={KMER_K})\n")
+    print(f"    Metrics  : BLOSUM62 alignment, K-mer (k={KMER_K}), Edit distance\n")
 
     results = []
     for symbol, isoform_id, local_seq in all_seqs:
         blosum_score = blosum_similarity(query_seq, local_seq)
         kmer_score   = kmer_similarity(query_seq, local_seq, k=KMER_K)
-        avg_score    = (blosum_score + kmer_score) / 2
-        results.append((symbol, isoform_id, blosum_score, kmer_score, avg_score))
+        edit_score   = edit_distance_similarity(query_seq, local_seq)
+        avg_score    = (blosum_score + kmer_score + edit_score) / 3
+        results.append((symbol, isoform_id, blosum_score, kmer_score, edit_score, avg_score))
 
-    results.sort(key=lambda x: x[4], reverse=True)
+    results.sort(key=lambda x: x[5], reverse=True)
 
     # Print combined results table
-    print(f"{'Gene':<10} {'Isoform':<28} {'BLOSUM62':>10} {'K-mer':>8} {'Average':>9}")
-    print(f"{'-'*10} {'-'*28} {'-'*10} {'-'*8} {'-'*9}")
-    for symbol, isoform_id, blosum, kmer, avg in results[:15]:
-        print(f"{symbol:<10} {isoform_id:<28} {blosum:>10.4f} {kmer:>8.4f} {avg:>9.4f}")
+    print(f"{'Gene':<10} {'Isoform':<28} {'BLOSUM62':>10} {'K-mer':>8} {'Edit':>8} {'Average':>9}")
+    print(f"{'-'*10} {'-'*28} {'-'*10} {'-'*8} {'-'*8} {'-'*9}")
+    for symbol, isoform_id, blosum, kmer, edit, avg in results[:15]:
+        print(f"{symbol:<10} {isoform_id:<28} {blosum:>10.4f} {kmer:>8.4f} {edit:>8.4f} {avg:>9.4f}")
 
     # Best match
-    top_symbol, top_isoform_id, top_blosum, top_kmer, top_avg = results[0]
+    top_symbol, top_isoform_id, top_blosum, top_kmer, top_edit, top_avg = results[0]
     print(f"\n--- Best match ---")
     print(f"  Query   : {target_gene} | {query_isoform_id}")
     print(f"  Match   : {top_symbol} | {top_isoform_id}")
     print(f"  BLOSUM62: {top_blosum:.4f}")
     print(f"  K-mer   : {top_kmer:.4f}")
+    print(f"  Edit    : {top_edit:.4f}")
     print(f"  Average : {top_avg:.4f}")
 
     # Best non-self match + alignment
-    non_self = [(s, i, b, k, a) for s, i, b, k, a in results if s != target_gene]
+    non_self = [(s, i, b, k, e, a) for s, i, b, k, e, a in results if s != target_gene]
     if non_self:
-        best_symbol, best_isoform, best_blosum, best_kmer, best_avg = non_self[0]
+        best_symbol, best_isoform, best_blosum, best_kmer, best_edit, best_avg = non_self[0]
         print(f"\n--- Best match outside {target_gene} ---")
         print(f"  Gene    : {best_symbol} | {best_isoform}")
         print(f"  BLOSUM62: {best_blosum:.4f}")
         print(f"  K-mer   : {best_kmer:.4f}")
+        print(f"  Edit    : {best_edit:.4f}")
         print(f"\n--- Alignment ---")
         best_seq = db.get_isoform_sequence(best_symbol, "protein", best_isoform)
         print(aligner.align(query_seq, best_seq)[0])
+
+    # --- Visualizations ---
+    RESULTS_DIR = os.path.join(os.path.dirname(__file__), '..', 'results')
+
+    print(f"\n--- Generating visualizations ---")
+
+    # 1. Bar chart of top 10 results
+    plot_bar_chart(results, target_gene, output_dir=RESULTS_DIR)
+
+    # 2. K-mer heatmap
+    plot_heatmap(all_seqs, lambda a, b: kmer_similarity(a, b, k=KMER_K),
+                 "K-mer (k=3)", target_gene, output_dir=RESULTS_DIR)
+
+    # 3. Edit distance heatmap
+    plot_heatmap(all_seqs, edit_distance_similarity,
+                 "Edit distance", target_gene, output_dir=RESULTS_DIR)
+
+    # 4. Optional BLOSUM62 heatmap
+    print(f"\n  Generate BLOSUM62 heatmap?")
+    print(f"  Warning: this runs a full pairwise alignment for every gene pair.")
+    print(f"  With {len(set(s for s, i, _ in all_seqs))} genes it could take 10-30 minutes.")
+    blosum_choice = input("  Generate it? (y/n): ").strip().lower()
+    if blosum_choice == "y":
+        plot_heatmap(all_seqs, blosum_similarity,
+                     "BLOSUM62", target_gene, output_dir=RESULTS_DIR)
+    else:
+        print("  Skipping BLOSUM62 heatmap.")
+
+    print(f"\nAll visualizations saved to: {RESULTS_DIR}")
 
 db.close()
