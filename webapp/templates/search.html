@@ -1,0 +1,387 @@
+{% extends "base.html" %}
+{% block title %}Search — GeneSim{% endblock %}
+{% block page_title %}Similarity Search{% endblock %}
+{% block page_sub %}Compare a gene against 60 human genes using multiple metrics{% endblock %}
+
+{% block content %}
+<div style="display:grid; grid-template-columns:360px 1fr; gap:20px; align-items:start;">
+
+    <!-- Left: Form -->
+    <div>
+        <div class="card">
+            <div class="card-title">Query Input</div>
+
+            <div class="tab-bar">
+                <button class="tab-btn active" id="tab-name" onclick="switchTab('name')">Gene Name</button>
+                <button class="tab-btn" id="tab-seq"  onclick="switchTab('seq')">Paste Sequence</button>
+            </div>
+
+            <!-- Gene name input -->
+            <div id="input-name">
+                <div class="form-group">
+                    <label class="form-label">Gene Symbol</label>
+                    <input type="text" id="gene-name" class="form-input"
+                           placeholder="e.g. TP53, BRCA2, KRAS"
+                           onkeydown="if(event.key==='Enter') runSearch()">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Sequence Type to Fetch</label>
+                    <select id="fetch-type" class="form-select">
+                        <option value="protein">Protein (amino acid)</option>
+                        <option value="dna">DNA (mRNA/nucleotide)</option>
+                    </select>
+                    <div class="text-muted text-sm mt-8">Fetched live from NCBI RefSeq</div>
+                </div>
+            </div>
+
+            <!-- Paste sequence input -->
+            <div id="input-seq" class="hidden">
+                <div class="form-group">
+                    <label class="form-label">Paste Sequence</label>
+                    <textarea id="gene-seq" class="form-textarea" rows="6"
+                        placeholder=">optional_header&#10;MEEPQSDPSVEPPLSQETFSDLWKLLPENN...&#10;&#10;Or paste a DNA sequence (ATGC...)"></textarea>
+                    <div class="text-muted text-sm mt-8">Plain AA/DNA or FASTA format. Type is auto-detected.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Metrics to Run</div>
+            <div class="toggle-group">
+                <label class="toggle-chip checked" id="chip-blosum">
+                    <input type="checkbox" id="metric-blosum" checked onchange="toggleChip(this,'chip-blosum')">
+                    <span class="dot"></span> BLOSUM62 / DNA Align
+                </label>
+                <label class="toggle-chip checked" id="chip-kmer">
+                    <input type="checkbox" id="metric-kmer" checked onchange="toggleChip(this,'chip-kmer')">
+                    <span class="dot"></span> K-mer
+                </label>
+                <label class="toggle-chip checked" id="chip-edit">
+                    <input type="checkbox" id="metric-edit" checked onchange="toggleChip(this,'chip-edit')">
+                    <span class="dot"></span> Edit Distance
+                </label>
+                <label class="toggle-chip checked" id="chip-motif">
+                    <input type="checkbox" id="metric-motif" checked onchange="toggleChip(this,'chip-motif')">
+                    <span class="dot"></span> Motif (JASPAR)
+                </label>
+            </div>
+            <div class="text-muted text-sm mt-8">
+                ⚠ Alignment is slower on long sequences. Motif uses cached TF sets.
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Options</div>
+            <div class="form-group">
+                <label class="form-label">
+                    Results to show: <span id="top-n-val" style="color:var(--accent);font-weight:600">10</span>
+                </label>
+                <input type="range" id="top-n" min="5" max="30" value="10"
+                       oninput="document.getElementById('top-n-val').textContent=this.value">
+            </div>
+        </div>
+
+        <button class="btn btn-primary" style="width:100%;" onclick="runSearch()" id="search-btn">
+            🔍 Run Search
+        </button>
+
+        <!-- Recent Searches -->
+        <div class="card" id="recent-card" style="margin-top:16px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+                <div class="card-title" style="margin-bottom:0">Recent Searches</div>
+                <button class="btn btn-ghost btn-sm" onclick="clearRecent()">Clear</button>
+            </div>
+            <div id="recent-list">
+                <div class="text-muted text-sm" style="text-align:center; padding:12px 0">No recent searches yet.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right: Results -->
+    <div>
+        <div id="empty-state" class="card" style="text-align:center; padding:64px 24px;">
+            <div style="font-size:52px; margin-bottom:18px">🧬</div>
+            <div style="font-size:17px; font-weight:600; margin-bottom:8px; color:var(--text)">Ready to search</div>
+            <div class="text-muted" style="font-size:13px; max-width:300px; margin:0 auto; line-height:1.6">
+                Enter a gene name or paste a sequence, choose your metrics, and click Run Search.
+            </div>
+        </div>
+
+        <div id="results-content" class="hidden">
+
+            <div id="error-box" class="hidden"></div>
+
+            <div class="stat-row" id="result-stats"></div>
+
+            <div class="card">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+                    <div class="card-title" style="margin-bottom:0">Results</div>
+                    <input type="text" id="results-search"
+                           class="form-input"
+                           style="width:220px; padding:7px 12px; font-size:13px;"
+                           placeholder="🔍 Filter results..."
+                           oninput="filterResults(this.value)">
+                </div>
+                <div style="overflow-x:auto;">
+                    <table class="data-table">
+                        <thead id="results-thead"></thead>
+                        <tbody id="results-tbody"></tbody>
+                    </table>
+                    <div id="no-filter-results" class="hidden"
+                         style="text-align:center; padding:24px; color:var(--text-muted); font-size:13px;">
+                        No results match your filter.
+                    </div>
+                </div>
+            </div>
+
+            <div class="card hidden" id="best-match-card">
+                <div class="card-title">Best Match Outside Query Gene</div>
+                <div id="best-match-info"></div>
+            </div>
+
+            <div class="card hidden" id="alignment-card">
+                <div class="card-title">Sequence Alignment</div>
+                <div class="code-block" id="alignment-text"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentTab = 'name';
+let allResults = [];
+let activeMetrics = [];
+
+function switchTab(tab) {
+    currentTab = tab;
+    document.getElementById('input-name').classList.toggle('hidden', tab !== 'name');
+    document.getElementById('input-seq').classList.toggle('hidden', tab !== 'seq');
+    document.getElementById('tab-name').classList.toggle('active', tab === 'name');
+    document.getElementById('tab-seq').classList.toggle('active', tab === 'seq');
+}
+
+function toggleChip(cb, id) {
+    document.getElementById(id).classList.toggle('checked', cb.checked);
+}
+
+function getSelectedMetrics() {
+    const m = [];
+    if (document.getElementById('metric-blosum').checked) m.push('blosum');
+    if (document.getElementById('metric-kmer').checked)   m.push('kmer');
+    if (document.getElementById('metric-edit').checked)   m.push('edit');
+    if (document.getElementById('metric-motif').checked)  m.push('motif');
+    return m;
+}
+
+const METRIC_COLORS = {
+    blosum: '#0071e3',
+    kmer:   '#34c759',
+    edit:   '#ff3b30',
+    motif:  '#ff9500',
+};
+
+const METRIC_LABELS = {
+    blosum: 'Alignment',
+    kmer:   'K-mer',
+    edit:   'Edit Dist',
+    motif:  'Motif',
+};
+
+async function runSearch() {
+    const metrics = getSelectedMetrics();
+    if (!metrics.length) { alert('Select at least one metric.'); return; }
+
+    const topN = parseInt(document.getElementById('top-n').value);
+    let body;
+
+    if (currentTab === 'name') {
+        const name      = document.getElementById('gene-name').value.trim();
+        const fetchType = document.getElementById('fetch-type').value;
+        if (!name) { alert('Enter a gene name.'); return; }
+        body = { input_type: 'gene_name', gene_name: name, fetch_type: fetchType, metrics, top_n: topN };
+    } else {
+        const seq = document.getElementById('gene-seq').value.trim();
+        if (!seq) { alert('Paste a sequence.'); return; }
+        body = { input_type: 'sequence', sequence: seq, metrics, top_n: topN };
+    }
+
+    showDNA('Running similarity search...', 'Comparing against database isoforms');
+    document.getElementById('search-btn').disabled = true;
+    document.getElementById('empty-state').classList.add('hidden');
+    document.getElementById('results-content').classList.add('hidden');
+    document.getElementById('results-search').value = '';
+
+    try {
+        const resp = await fetch('/api/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        hideDNA();
+        if (!resp.ok) { showError(data.error || 'Search failed'); return; }
+        activeMetrics = metrics;
+        allResults    = data.results;
+        renderResults(data, metrics);
+        loadRecent();
+    } catch (e) {
+        hideDNA();
+        showError('Network error: ' + e.message);
+    } finally {
+        document.getElementById('search-btn').disabled = false;
+    }
+}
+
+function showError(msg) {
+    document.getElementById('results-content').classList.remove('hidden');
+    document.getElementById('empty-state').classList.add('hidden');
+    const eb = document.getElementById('error-box');
+    eb.className = 'alert alert-error';
+    eb.innerHTML = '❌ ' + msg;
+    eb.classList.remove('hidden');
+}
+
+function renderResults(data, metrics) {
+    document.getElementById('results-content').classList.remove('hidden');
+    document.getElementById('error-box').classList.add('hidden');
+
+    const modeLabel = data.seq_mode === 'dna' ? 'DNA' : 'Protein';
+
+    document.getElementById('result-stats').innerHTML = `
+        <div class="stat-chip"><div class="stat-val">${data.query_label}</div><div class="stat-label">Query Gene</div></div>
+        <div class="stat-chip"><div class="stat-val">${data.query_length.toLocaleString()}</div><div class="stat-label">${modeLabel} Length</div></div>
+        <div class="stat-chip"><div class="stat-val">${data.total_compared}</div><div class="stat-label">Isoforms Compared</div></div>
+        <div class="stat-chip"><div class="stat-val">${modeLabel}</div><div class="stat-label">Mode</div></div>
+    `;
+
+    renderTable(data.results, metrics);
+
+    const bm     = data.best_non_self;
+    const bmCard = document.getElementById('best-match-card');
+    if (bm) {
+        document.getElementById('best-match-info').innerHTML = `
+            <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:14px;">
+                <div><div class="text-muted text-sm">Gene</div><div class="gene-badge" style="font-size:18px">${bm.gene}</div></div>
+                <div><div class="text-muted text-sm">Isoform</div><div class="text-mono text-sm" style="margin-top:2px">${bm.isoform}</div></div>
+                <div><div class="text-muted text-sm">Average Score</div><div style="font-size:18px;font-weight:700;color:var(--accent);font-family:var(--mono)">${bm.average.toFixed(4)}</div></div>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                ${Object.entries(bm.scores).map(([k,v]) => `
+                    <div style="background:var(--bg);border:1px solid var(--border-light);border-radius:8px;padding:10px 16px;">
+                        <div class="text-muted text-sm">${METRIC_LABELS[k]}</div>
+                        <div style="font-family:var(--mono);font-weight:600;color:${METRIC_COLORS[k]}">${v.toFixed(4)}</div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        bmCard.classList.remove('hidden');
+    } else {
+        bmCard.classList.add('hidden');
+    }
+
+    const alignCard = document.getElementById('alignment-card');
+    if (data.alignment) {
+        document.getElementById('alignment-text').textContent = data.alignment;
+        alignCard.classList.remove('hidden');
+    } else {
+        alignCard.classList.add('hidden');
+    }
+}
+
+function renderTable(results, metrics) {
+    document.getElementById('results-thead').innerHTML = `<tr>
+        <th style="width:36px">#</th>
+        <th>Gene</th>
+        <th>Isoform</th>
+        ${metrics.map(m => `<th>${METRIC_LABELS[m]}</th>`).join('')}
+        <th>Average</th>
+    </tr>`;
+
+    const tbody = document.getElementById('results-tbody');
+    if (!results.length) {
+        tbody.innerHTML = '';
+        document.getElementById('no-filter-results').classList.remove('hidden');
+        return;
+    }
+    document.getElementById('no-filter-results').classList.add('hidden');
+
+    tbody.innerHTML = results.map((r, i) => `
+        <tr>
+            <td class="text-muted text-sm">${i + 1}</td>
+            <td><span class="gene-badge">${r.gene}</span></td>
+            <td class="text-muted text-sm text-mono" style="font-size:11px">${r.isoform}</td>
+            ${metrics.map(m => {
+                const val   = r.scores[m] ?? 0;
+                const color = METRIC_COLORS[m];
+                return `<td>
+                    <div class="score-bar">
+                        <div class="score-bar-track">
+                            <div class="score-bar-fill" style="width:${val*100}%;background:${color}"></div>
+                        </div>
+                        <span class="score-val" style="color:${color}">${val.toFixed(4)}</span>
+                    </div>
+                </td>`;
+            }).join('')}
+            <td><span class="text-mono" style="color:var(--accent);font-weight:700">${r.average.toFixed(4)}</span></td>
+        </tr>
+    `).join('');
+}
+
+function filterResults(q) {
+    if (!allResults.length) return;
+    const f = q.toLowerCase().trim();
+    if (!f) { renderTable(allResults, activeMetrics); return; }
+    renderTable(
+        allResults.filter(r =>
+            r.gene.toLowerCase().includes(f) ||
+            r.isoform.toLowerCase().includes(f)
+        ),
+        activeMetrics
+    );
+}
+
+// ── Recent searches ──
+const METRIC_ABBR = { blosum:'B', kmer:'K', edit:'E', motif:'M' };
+
+async function loadRecent() {
+    const resp = await fetch('/api/recent_searches');
+    const data = await resp.json();
+    const list = document.getElementById('recent-list');
+
+    if (!data.length) {
+        list.innerHTML = `<div class="text-muted text-sm" style="text-align:center; padding:12px 0">No recent searches yet.</div>`;
+        return;
+    }
+
+    list.innerHTML = data.map(s => `
+        <div style="display:flex; align-items:center; justify-content:space-between;
+                    padding:8px 10px; border-radius:8px; margin-bottom:4px;
+                    background:var(--bg); border:1px solid var(--border-light); cursor:pointer;"
+             onclick="rerunSearch('${s.query}', '${s.mode}')">
+            <div>
+                <div style="font-weight:600; font-size:13px; color:var(--accent); font-family:var(--mono)">${s.query}</div>
+                <div class="text-muted text-sm">${s.mode} · ${s.metrics.map(m => METRIC_ABBR[m]||m).join('+')} · ${s.results} results</div>
+            </div>
+            <div class="text-muted text-sm">${s.time}</div>
+        </div>
+    `).join('');
+}
+
+function rerunSearch(query, mode) {
+    // Switch to gene name tab, fill in the gene, set mode, run
+    switchTab('name');
+    document.getElementById('gene-name').value = query;
+    const sel = document.getElementById('fetch-type');
+    if (sel) sel.value = mode === 'dna' ? 'dna' : 'protein';
+    runSearch();
+}
+
+async function clearRecent() {
+    await fetch('/api/clear_recent', { method: 'POST' });
+    loadRecent();
+}
+
+// Load recent searches on page load
+loadRecent();
+</script>
+{% endblock %}

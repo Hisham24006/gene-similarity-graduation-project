@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Benchmark — GeneSim{% endblock %}
+{% block page_title %}Metric Benchmarks{% endblock %}
+{% block page_sub %}Compare speed and accuracy of all similarity metrics{% endblock %}
+
+{% block content %}
+
+<div style="display:grid; grid-template-columns:320px 1fr; gap:20px; align-items:start;">
+
+    <div class="card">
+        <div class="card-title">Configure</div>
+        <div class="form-group">
+            <label class="form-label">
+                Gene pairs to test: <span id="pairs-val" style="color:var(--accent); font-weight:600">20</span>
+            </label>
+            <input type="range" id="n-pairs" min="5" max="50" value="20"
+                   oninput="document.getElementById('pairs-val').textContent=this.value">
+            <div class="text-muted text-sm mt-8">More pairs = more accurate, but slower.</div>
+        </div>
+        <button class="btn btn-primary" style="width:100%;" onclick="runBenchmark()" id="bench-btn">
+            ⚡ Run Benchmark
+        </button>
+    </div>
+
+    <div>
+        <div id="bench-empty" class="card" style="text-align:center; padding:48px 24px;">
+            <div style="font-size:44px; margin-bottom:16px">⚡</div>
+            <div style="font-size:16px; font-weight:600; margin-bottom:8px">No benchmark run yet</div>
+            <div class="text-muted text-sm" style="line-height:1.6">Configure the number of gene pairs and click Run Benchmark to compare metric performance.</div>
+        </div>
+
+        <div id="bench-results" class="hidden">
+
+            <div class="stat-row" id="bench-stats"></div>
+
+            <div class="card">
+                <div class="card-title">Speed & Agreement</div>
+                <div style="overflow-x:auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Metric</th>
+                                <th>Avg time</th>
+                                <th>Min</th>
+                                <th>Max</th>
+                                <th>vs BLOSUM62 (r)</th>
+                                <th>Relative speed</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bench-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">How to read this</div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; font-size:13px; color:var(--text-mid); line-height:1.7;">
+                    <div>
+                        <strong style="color:var(--text); display:block; margin-bottom:4px">Speed (avg time)</strong>
+                        Time for a single pairwise comparison. K-mer and Motif are near-instant. BLOSUM62 is much slower, especially on long sequences like BRCA2 (3,418 AA).
+                    </div>
+                    <div>
+                        <strong style="color:var(--text); display:block; margin-bottom:4px">Agreement (r)</strong>
+                        Pearson correlation with BLOSUM62 scores. High r = agrees with BLOSUM62. Motif can disagree — this is intentional, revealing functional similarity that sequence alone misses.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const METRIC_COLORS = {
+    'BLOSUM62':       '#0071e3',
+    'K-mer (k=3)':    '#34c759',
+    'Edit distance':  '#ff3b30',
+    'Motif (JASPAR)': '#ff9500',
+};
+
+async function runBenchmark() {
+    const nPairs = parseInt(document.getElementById('n-pairs').value);
+    showDNA('Running benchmark...', `Testing ${nPairs} random gene pairs`);
+    document.getElementById('bench-btn').disabled = true;
+    document.getElementById('bench-results').classList.add('hidden');
+    document.getElementById('bench-empty').classList.add('hidden');
+
+    try {
+        const resp = await fetch('/api/benchmark', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ n_pairs: nPairs })
+        });
+        const data = await resp.json();
+        hideDNA();
+        renderBenchmark(data);
+    } catch (e) {
+        hideDNA();
+        alert('Benchmark failed: ' + e.message);
+        document.getElementById('bench-empty').classList.remove('hidden');
+    } finally {
+        document.getElementById('bench-btn').disabled = false;
+    }
+}
+
+function renderBenchmark(data) {
+    document.getElementById('bench-results').classList.remove('hidden');
+
+    document.getElementById('bench-stats').innerHTML = `
+        <div class="stat-chip"><div class="stat-val">${data.pairs_tested}</div><div class="stat-label">Pairs tested</div></div>
+        <div class="stat-chip"><div class="stat-val">4</div><div class="stat-label">Metrics compared</div></div>
+    `;
+
+    const maxTime = Math.max(...data.results.map(r => r.avg_ms));
+
+    document.getElementById('bench-tbody').innerHTML = data.results.map(r => {
+        const color = METRIC_COLORS[r.metric] || '#6e6e73';
+        const corrColor = r.corr >= 0.8 ? 'var(--green)' : r.corr >= 0.5 ? 'var(--orange)' : 'var(--text-muted)';
+        const pct = Math.max(2, (r.avg_ms / maxTime) * 100);
+
+        return `<tr>
+            <td><span style="color:${color}; font-weight:600">${r.metric}</span></td>
+            <td class="text-mono text-sm">${r.avg_ms.toFixed(3)} ms</td>
+            <td class="text-mono text-sm text-muted">${r.min_ms.toFixed(3)}</td>
+            <td class="text-mono text-sm text-muted">${r.max_ms.toFixed(3)}</td>
+            <td><span class="text-mono" style="color:${corrColor}; font-weight:600">${r.corr.toFixed(4)}</span></td>
+            <td style="min-width:140px;">
+                <div style="background:var(--border-light); border-radius:3px; height:6px; overflow:hidden;">
+                    <div style="width:${pct}%; height:100%; background:${color}; border-radius:3px; transition:width 0.5s ease;"></div>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+}
+</script>
+{% endblock %}

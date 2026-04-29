@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}GeneSim{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg:          #f5f5f7;
+            --bg-white:    #ffffff;
+            --bg-section:  #fbfbfd;
+            --text:        #1d1d1f;
+            --text-mid:    #424245;
+            --text-muted:  #6e6e73;
+            --border:      #d2d2d7;
+            --border-light:#e8e8ed;
+            --accent:      #0071e3;
+            --accent-dark: #0051a2;
+            --accent-light:#e8f0fe;
+            --green:       #34c759;
+            --orange:      #ff9500;
+            --red:         #ff3b30;
+            --purple:      #af52de;
+            --shadow-sm:   0 2px 8px rgba(0,0,0,0.06);
+            --shadow-md:   0 4px 20px rgba(0,0,0,0.08);
+            --radius:      12px;
+            --radius-sm:   8px;
+            --sans:        'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+            --mono:        'JetBrains Mono', 'SF Mono', monospace;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--sans);
+            min-height: 100vh;
+            display: flex;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .sidebar {
+            width: 240px;
+            min-height: 100vh;
+            background: var(--bg-white);
+            border-right: 1px solid var(--border-light);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0; left: 0;
+            z-index: 100;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .sidebar-logo {
+            padding: 28px 24px 20px;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .logo-mark {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text);
+            letter-spacing: -0.5px;
+        }
+
+        .logo-mark span { color: var(--accent); }
+        .logo-sub { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+
+        .sidebar nav { padding: 12px 0; flex: 1; }
+
+        .nav-section {
+            padding: 12px 24px 4px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 24px;
+            color: var(--text-mid);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 400;
+            transition: all 0.15s;
+            position: relative;
+        }
+
+        .nav-link:hover { color: var(--text); background: var(--bg); }
+
+        .nav-link.active {
+            color: var(--accent);
+            background: var(--accent-light);
+            font-weight: 500;
+        }
+
+        .nav-link.active::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 4px; bottom: 4px;
+            width: 3px;
+            background: var(--accent);
+            border-radius: 0 2px 2px 0;
+        }
+
+        .nav-icon { font-size: 15px; width: 18px; text-align: center; }
+
+        .sidebar-footer {
+            padding: 16px 24px;
+            border-top: 1px solid var(--border-light);
+            font-size: 11px;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+
+        .main {
+            margin-left: 240px;
+            flex: 1;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .topbar {
+            padding: 18px 36px;
+            border-bottom: 1px solid var(--border-light);
+            background: rgba(255,255,255,0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .topbar-title { font-size: 17px; font-weight: 600; color: var(--text); letter-spacing: -0.2px; }
+        .topbar-sub   { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+        .content { padding: 32px 36px; flex: 1; }
+
+        .card {
+            background: var(--bg-white);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 16px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-light);
+        }
+
+        .card-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 16px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 11px 22px;
+            border-radius: 980px;
+            font-family: var(--sans);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+            letter-spacing: -0.1px;
+        }
+
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-primary:hover { background: var(--accent-dark); }
+        .btn-primary:active { transform: scale(0.98); }
+        .btn-primary:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
+
+        .btn-ghost {
+            background: var(--bg);
+            color: var(--text-mid);
+            border: 1px solid var(--border);
+        }
+        .btn-ghost:hover { background: var(--border-light); }
+        .btn-sm { padding: 6px 14px; font-size: 13px; }
+
+        .form-group { margin-bottom: 16px; }
+
+        .form-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-mid);
+            margin-bottom: 6px;
+        }
+
+        .form-input {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 10px 14px;
+            color: var(--text);
+            font-family: var(--sans);
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .form-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(0,113,227,0.12);
+            background: var(--bg-white);
+        }
+
+        .form-select {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 10px 14px;
+            color: var(--text);
+            font-family: var(--sans);
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+            transition: border-color 0.15s;
+        }
+
+        .form-select:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(0,113,227,0.12);
+        }
+
+        .form-textarea {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 12px 14px;
+            color: var(--text);
+            font-family: var(--mono);
+            font-size: 12px;
+            resize: vertical;
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+            line-height: 1.6;
+        }
+
+        .form-textarea:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(0,113,227,0.12);
+            background: var(--bg-white);
+        }
+
+        .toggle-group { display: flex; flex-wrap: wrap; gap: 8px; }
+
+        .toggle-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 980px;
+            border: 1px solid var(--border);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.15s;
+            user-select: none;
+            color: var(--text-muted);
+            background: var(--bg);
+        }
+
+        .toggle-chip input { display: none; }
+
+        .toggle-chip.checked {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: var(--accent-light);
+            font-weight: 500;
+        }
+
+        .toggle-chip .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+        .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+        .data-table th {
+            text-align: left;
+            padding: 10px 14px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            border-bottom: 1px solid var(--border-light);
+            background: var(--bg-section);
+        }
+
+        .data-table td {
+            padding: 11px 14px;
+            border-bottom: 1px solid var(--border-light);
+            color: var(--text-mid);
+        }
+
+        .data-table tbody tr:hover td { background: #f0f6ff; }
+        .data-table tbody tr:last-child td { border-bottom: none; }
+
+        .gene-badge {
+            font-family: var(--mono);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .score-bar { display: flex; align-items: center; gap: 8px; }
+
+        .score-bar-track {
+            flex: 1;
+            height: 5px;
+            background: var(--border-light);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .score-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s cubic-bezier(0.4,0,0.2,1);
+        }
+
+        .score-val {
+            font-family: var(--mono);
+            font-size: 12px;
+            min-width: 50px;
+            text-align: right;
+            font-weight: 500;
+        }
+
+        .tab-bar {
+            display: flex;
+            border-bottom: 1px solid var(--border-light);
+            margin-bottom: 20px;
+        }
+
+        .tab-btn {
+            padding: 9px 18px;
+            font-size: 14px;
+            font-weight: 400;
+            color: var(--text-muted);
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-family: var(--sans);
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            transition: all 0.15s;
+        }
+
+        .tab-btn:hover { color: var(--text); }
+        .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 500; }
+
+        .code-block {
+            background: var(--bg);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            font-family: var(--mono);
+            font-size: 11px;
+            line-height: 1.7;
+            color: var(--text-mid);
+            overflow-x: auto;
+            white-space: pre;
+        }
+
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--border);
+            outline: none;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px; height: 18px;
+            border-radius: 50%;
+            background: var(--accent);
+            cursor: pointer;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        }
+
+        .stat-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+
+        .stat-chip {
+            background: var(--bg-white);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius);
+            padding: 14px 20px;
+            box-shadow: var(--shadow-sm);
+            min-width: 110px;
+        }
+
+        .stat-chip .stat-val { font-size: 20px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; }
+        .stat-chip .stat-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .alert-error   { background: #fff2f2; border: 1px solid #ffd1d1; color: #c0392b; }
+        .alert-success { background: #f0faf4; border: 1px solid #c3e6cb; color: #1e8449; }
+        .alert-info    { background: var(--accent-light); border: 1px solid #c8ddf8; color: var(--accent-dark); }
+
+        /* DNA Overlay */
+        .dna-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(255,255,255,0.88);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            z-index: 999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s;
+        }
+
+        .dna-overlay.visible { opacity: 1; pointer-events: all; }
+
+        .dna-label { font-size: 15px; font-weight: 500; color: var(--text-mid); }
+        .dna-sub   { font-size: 12px; color: var(--text-muted); margin-top: -12px; }
+
+        @keyframes helix-a {
+            0%,100% { transform: scaleX(1); }
+            50%      { transform: scaleX(-1); }
+        }
+        @keyframes helix-b {
+            0%,100% { transform: scaleX(-1); }
+            50%      { transform: scaleX(1); }
+        }
+        @keyframes rung-fade {
+            0%,100% { opacity: 0.2; }
+            50%      { opacity: 0.9; }
+        }
+        @keyframes float {
+            0%,100% { transform: translateY(0); }
+            50%      { transform: translateY(-6px); }
+        }
+
+        .dna-wrap { animation: float 2s ease-in-out infinite; }
+
+        .strand-a { animation: helix-a 1.4s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+        .strand-b { animation: helix-b 1.4s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+
+        .rung { animation: rung-fade 1.4s ease-in-out infinite; }
+        .rung:nth-child(2)  { animation-delay: 0.175s; }
+        .rung:nth-child(3)  { animation-delay: 0.35s; }
+        .rung:nth-child(4)  { animation-delay: 0.525s; }
+        .rung:nth-child(5)  { animation-delay: 0.7s; }
+        .rung:nth-child(6)  { animation-delay: 0.875s; }
+        .rung:nth-child(7)  { animation-delay: 1.05s; }
+        .rung:nth-child(8)  { animation-delay: 1.225s; }
+
+        .text-mono   { font-family: var(--mono); }
+        .text-muted  { color: var(--text-muted); }
+        .text-accent { color: var(--accent); }
+        .text-sm     { font-size: 12px; }
+        .mt-8        { margin-top: 8px; }
+        .mt-16       { margin-top: 16px; }
+        .flex        { display: flex; }
+        .items-center{ align-items: center; }
+        .gap-8       { gap: 8px; }
+        .gap-12      { gap: 12px; }
+        .hidden      { display: none !important; }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body>
+
+<!-- DNA Overlay -->
+<div class="dna-overlay" id="dna-overlay">
+    <div class="dna-wrap">
+        <svg width="56" height="120" viewBox="0 0 56 120" fill="none">
+            <!-- Strand A -->
+            <path class="strand-a" d="M8,10 C28,30 28,50 8,70 C28,90 28,110 8,130"
+                  stroke="#0071e3" stroke-width="3" stroke-linecap="round" fill="none"/>
+            <!-- Strand B -->
+            <path class="strand-b" d="M48,10 C28,30 28,50 48,70 C28,90 28,110 48,130"
+                  stroke="#34c759" stroke-width="3" stroke-linecap="round" fill="none"/>
+            <!-- Rungs -->
+            <line class="rung" x1="8"  y1="18" x2="48" y2="18" stroke="#0071e3" stroke-width="1.5" stroke-linecap="round"/>
+            <line class="rung" x1="14" y1="33" x2="42" y2="33" stroke="#af52de" stroke-width="1.5" stroke-linecap="round"/>
+            <line class="rung" x1="8"  y1="48" x2="48" y2="48" stroke="#34c759" stroke-width="1.5" stroke-linecap="round"/>
+            <line class="rung" x1="14" y1="63" x2="42" y2="63" stroke="#ff9500" stroke-width="1.5" stroke-linecap="round"/>
+            <line class="rung" x1="8"  y1="78" x2="48" y2="78" stroke="#0071e3" stroke-width="1.5" stroke-linecap="round"/>
+            <line class="rung" x1="14" y1="93" x2="42" y2="93" stroke="#af52de" stroke-width="1.5" stroke-linecap="round"/>
+            <line class="rung" x1="8"  y1="108" x2="48" y2="108" stroke="#34c759" stroke-width="1.5" stroke-linecap="round"/>
+            <line class="rung" x1="14" y1="123" x2="42" y2="123" stroke="#ff9500" stroke-width="1.5" stroke-linecap="round"/>
+            <!-- End dots -->
+            <circle cx="8"  cy="10" r="4" fill="#0071e3"/>
+            <circle cx="48" cy="10" r="4" fill="#34c759"/>
+            <circle cx="8"  cy="130" r="4" fill="#0071e3"/>
+            <circle cx="48" cy="130" r="4" fill="#34c759"/>
+        </svg>
+    </div>
+    <div class="dna-label" id="dna-label">Running similarity search...</div>
+    <div class="dna-sub"   id="dna-sub">This may take a moment</div>
+</div>
+
+<script>
+function showDNA(label, sub) {
+    document.getElementById('dna-label').textContent = label || 'Processing...';
+    document.getElementById('dna-sub').textContent   = sub   || 'Please wait';
+    document.getElementById('dna-overlay').classList.add('visible');
+}
+function hideDNA() {
+    document.getElementById('dna-overlay').classList.remove('visible');
+}
+</script>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+    <div class="sidebar-logo">
+        <div class="logo-mark">Gene<span>Sim</span></div>
+        <div class="logo-sub">Gene Similarity Search</div>
+    </div>
+    <nav>
+        <div class="nav-section">Tools</div>
+        <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">
+            <span class="nav-icon">🔍</span> Search
+        </a>
+        <a href="/database" class="nav-link {% if request.path == '/database' %}active{% endif %}">
+            <span class="nav-icon">🧬</span> Database
+        </a>
+        <a href="/visualize" class="nav-link {% if request.path == '/visualize' %}active{% endif %}">
+            <span class="nav-icon">📊</span> Visualizations
+        </a>
+        <a href="/benchmark" class="nav-link {% if request.path == '/benchmark' %}active{% endif %}">
+            <span class="nav-icon">⚡</span> Benchmark
+        </a>
+    </nav>
+    <div class="sidebar-footer">
+        <strong style="display:block; color:var(--text); font-weight:500; margin-bottom:2px">Graduation Project</strong>
+        University of Sharjah · 2026
+    </div>
+</aside>
+
+<!-- Main -->
+<main class="main">
+    <div class="topbar">
+        <div>
+            <div class="topbar-title">{% block page_title %}GeneSim{% endblock %}</div>
+            <div class="topbar-sub">{% block page_sub %}{% endblock %}</div>
+        </div>
+        {% block topbar_right %}{% endblock %}
+    </div>
+    <div class="content">
+        {% block content %}{% endblock %}
+    </div>
+</main>
+
+</body>
+</html>
