@@ -14,7 +14,7 @@ DB_PATH = os.path.join(
     os.path.dirname(__file__), '..', 'database', 'gene_vault.db'
 )
 
-TOP_N = 20
+TOP_N = 40
 K = 3
 
 aligner = PairwiseAligner()
@@ -91,6 +91,30 @@ def main():
     print("\nTop candidates:")
     for candidate_symbol, candidate_isoform, _ in candidates[:5]:
         print(f"  {candidate_symbol} | {candidate_isoform}")
+    # Check how well the filtered candidates preserve the best full-search matches
+    full_ranked = []
+
+    for candidate_symbol, candidate_isoform, local_seq in all_seqs:
+        score = blosum_similarity(query_seq, local_seq)
+        full_ranked.append((candidate_symbol, candidate_isoform, score))
+
+    full_ranked.sort(key=lambda x: x[2], reverse=True)
+    full_top_10 = full_ranked[:10]
+
+    candidate_ids = {
+        (candidate_symbol, candidate_isoform)
+        for candidate_symbol, candidate_isoform, _ in candidates
+    }
+
+    preserved = sum(
+        1
+        for candidate_symbol, candidate_isoform, _ in full_top_10
+        if (candidate_symbol, candidate_isoform) in candidate_ids
+    )
+
+    print("\n--- Quality Check ---")
+    print(f"Full-search top 10 preserved: {preserved}/10")
+    print(f"Recall@10: {(preserved / 10) * 100:.2f}%")
 
     db.close()
 
