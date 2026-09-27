@@ -15,6 +15,7 @@ from database_manager import GeneDatabase
 from metrics import kmer_similarity, edit_distance_similarity
 from visualizer import plot_bar_chart, plot_heatmap
 from motif_similarity import load_jaspar_motifs, fetch_promoter, cached_scan_motifs, jaccard_motif_similarity
+from kmer_index import get_candidate_sequences, build_index_from_database
 
 # --- Configuration ---
 Entrez.email = "hishamalsaadi06@gmail.com"
@@ -156,6 +157,14 @@ target_gene, query_isoform_id, query_seq = get_query()
 
 if query_seq:
     all_seqs = db.get_all_sequences_with_isoform("protein")
+    kmer_index = build_index_from_database(all_seqs, k=KMER_K)
+    candidate_seqs = get_candidate_sequences(
+        query_seq,
+        all_seqs,
+        k=KMER_K,
+        top_n=20,
+        index=kmer_index
+    )
 
     # --- Load JASPAR motifs and fetch query promoter ---
     print(f"\n--- Loading JASPAR motifs ---")
@@ -172,6 +181,7 @@ if query_seq:
     # --- Run all metrics ---
     print(f"\n--- Running similarity metrics for {target_gene} ({query_isoform_id}) ---")
     print(f"    Database : {len(all_seqs)} protein isoforms")
+    print(f"  K-mer filter: {len(all_seqs)} -> {len(candidate_seqs)} candidates")
     print(f"    Metrics  : BLOSUM62, K-mer (k={KMER_K}), Edit distance, Motif (JASPAR)\n")
 
     # Cache promoters and TF sets for all unique gene symbols
@@ -183,7 +193,7 @@ if query_seq:
         promoter_tfs[symbol] = cached_scan_motifs(symbol, promoter, bio_motifs) if promoter else set()
 
     results = []
-    for symbol, isoform_id, local_seq in all_seqs:
+    for symbol, isoform_id, local_seq in candidate_seqs:
         blosum_score = blosum_similarity(query_seq, local_seq)
         kmer_score   = kmer_similarity(query_seq, local_seq, k=KMER_K)
         edit_score   = edit_distance_similarity(query_seq, local_seq)
