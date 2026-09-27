@@ -49,6 +49,37 @@ def find_candidates(query_sequence, index, k=3, top_n=10):
     return ranked[:top_n]
 
 
+def find_candidates_normalized(query_sequence, index, sequences, k=3, top_n=10):
+    """
+    Rank candidates using normalized k-mer overlap.
+    """
+    scores = {}
+    query_kmers = set(get_kmers(query_sequence, k))
+
+    for kmer in query_kmers:
+        for sequence_id in index.get(kmer, set()):
+            scores[sequence_id] = scores.get(sequence_id, 0) + 1
+
+    normalized_scores = {}
+
+    for sequence_id, shared_count in scores.items():
+        candidate_kmers = set(get_kmers(sequences[sequence_id], k))
+
+        union_size = len(query_kmers | candidate_kmers)
+
+        normalized_scores[sequence_id] = (
+            shared_count / union_size if union_size > 0 else 0
+        )
+
+    ranked = sorted(
+        normalized_scores.items(),
+        key=lambda item: item[1],
+        reverse=True
+    )
+
+    return ranked[:top_n]
+
+
 def build_index_from_database(all_sequences, k=3):
     """
     Build a k-mer index from database rows:

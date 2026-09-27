@@ -6,7 +6,7 @@ import time
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'database'))
 
 from database_manager import GeneDatabase
-from kmer_index import get_candidate_sequences
+from kmer_index import get_candidate_sequences, build_index_from_database, find_candidates_normalized
 from metrics import kmer_similarity, edit_distance_similarity
 from Bio.Align import PairwiseAligner, substitution_matrices
 
@@ -34,14 +34,23 @@ def main():
     db = GeneDatabase(db_path=DB_PATH)
     all_seqs = db.get_all_sequences_with_isoform("protein")
 
+    sequence_dict = {
+        (symbol, isoform_id): sequence
+        for symbol, isoform_id, sequence in all_seqs
+    }
+
+    kmer_index = build_index_from_database(all_seqs, k=K)
+
     print("=== Track A Multi-Query Filter Benchmark ===")
     print(f"Database size: {len(all_seqs)} protein isoforms")
     print(f"Candidate limit: {TOP_N}")
     print(f"Queries tested: {TEST_QUERIES}")
 
     # Pick queries spread across the database
-    step = max(1, len(all_seqs) // TEST_QUERIES)
-    test_seqs = all_seqs[::step][:TEST_QUERIES]
+    test_seqs = [
+        row for row in all_seqs
+        if row[0] == "CCND1"
+    ][:1]
 
     speedups = []
     recalls = []
@@ -116,6 +125,47 @@ def main():
         print(f"New filter + refinement: {new_total_time:.3f} s")
         print(f"Speedup: {speedup:.2f}x")
         print(f"Recall@10: {recall:.2f}%")
+        if symbol == "CCND1":
+            print("\nCCND1 BLOSUM Top 10 Diagnostic:")
+
+            for rank, (match_symbol, match_isoform, score) in enumerate(full_top_10, 1):
+                kept = (match_symbol, match_isoform) in candidate_ids
+                status = "KEPT" if kept else "MISSED"
+
+                print(
+                    f"{rank}. {match_symbol} | {match_isoform} | "
+                    f"BLOSUM={score:.3f} | {status}"
+                )
+            all_candidates = get_candidate_sequences(
+                query_seq,
+                all_seqs,
+                k=K,
+                top_n=len(all_seqs)
+            )
+
+            print("\nCCNE1 k-mer ranks:")
+
+            for rank, (match_symbol, match_isoform, _) in enumerate(all_candidates, 1):
+                if match_symbol == "CCNE1":
+                    print(f"{rank}. {match_symbol} | {match_isoform}")
+            normalized_candidates = find_candidates_normalized(
+                query_seq,
+                kmer_index,
+                sequence_dict,
+                k=K,
+                top_n=len(all_seqs)
+            )
+
+            print("\nCCNE1 normalized k-mer ranks:")
+
+            for rank, ((match_symbol, match_isoform), score) in enumerate(
+                normalized_candidates, 1
+            ):
+                if match_symbol == "CCNE1":
+                    print(
+                        f"{rank}. {match_symbol} | {match_isoform} | "
+                        f"score={score:.4f}"
+                    )
 
     print("\n=== Overall Results ===")
     print(f"Average speedup: {sum(speedups) / len(speedups):.2f}x")
