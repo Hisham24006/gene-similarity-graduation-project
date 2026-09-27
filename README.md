@@ -140,7 +140,7 @@ Install with:
 pip install -r requirements.txt
 ```
 
----
+----
 
 ## Data Sources
 
@@ -149,7 +149,7 @@ pip install -r requirements.txt
 - **Ensembl** — DNA sequences and promoter regions via REST API
 - **JASPAR 2024** — transcription factor binding profiles via pyJASPAR
 
----
+----
 
 ## Team
 
