@@ -181,6 +181,7 @@ if query_seq:
     # --- Run all metrics ---
     print(f"\n--- Running similarity metrics for {target_gene} ({query_isoform_id}) ---")
     print(f"    Database : {len(all_seqs)} protein isoforms")
+    print(f"  K-mer filter: {len(all_seqs)} -> {len(candidate_seqs)} candidates")
     print(f"    Metrics  : BLOSUM62, K-mer (k={KMER_K}), Edit distance, Motif (JASPAR)\n")
 
     # Cache promoters and TF sets for all unique gene symbols
