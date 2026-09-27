@@ -6,7 +6,7 @@ import time
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'database'))
 
 from database_manager import GeneDatabase
-from kmer_index import get_candidate_sequences
+from kmer_index import get_candidate_sequences, build_index_from_database
 from metrics import kmer_similarity, edit_distance_similarity
 from Bio.Align import PairwiseAligner, substitution_matrices
 
@@ -33,6 +33,7 @@ def blosum_similarity(seq_a, seq_b):
 def main():
     db = GeneDatabase(db_path=DB_PATH)
     all_seqs = db.get_all_sequences_with_isoform("protein")
+    kmer_index = build_index_from_database(all_seqs, k=K)
 
     print("=== Track A Multi-Query Filter Benchmark ===")
     print(f"Database size: {len(all_seqs)} protein isoforms")
@@ -74,7 +75,8 @@ def main():
             query_seq,
             all_seqs,
             k=K,
-            top_n=TOP_N
+            top_n=TOP_N,
+            index=kmer_index
         )
 
         filter_time = time.perf_counter() - start

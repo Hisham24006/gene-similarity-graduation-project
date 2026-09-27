@@ -63,13 +63,15 @@ def build_index_from_database(all_sequences, k=3):
     return build_kmer_index(sequences, k)
 
 
-def get_candidate_sequences(query_sequence, all_sequences, k=3, top_n=20):
+def get_candidate_sequences(query_sequence, all_sequences, k=3, top_n=20, index=None):
     """
     Return the top candidate sequences using the k-mer index.
     Output format matches the database:
     (symbol, isoform_id, sequence)
     """
-    index = build_index_from_database(all_sequences, k)
+    if index is None:
+        index = build_index_from_database(all_sequences, k)
+
     candidates = find_candidates(query_sequence, index, k, top_n)
 
     sequence_lookup = {
