@@ -15,7 +15,7 @@ from database_manager import GeneDatabase
 from metrics import kmer_similarity, edit_distance_similarity
 from visualizer import plot_bar_chart, plot_heatmap
 from motif_similarity import load_jaspar_motifs, fetch_promoter, cached_scan_motifs, jaccard_motif_similarity
-from kmer_index import get_candidate_sequences
+from kmer_index import get_candidate_sequences, build_index_from_database
 
 # --- Configuration ---
 Entrez.email = "hishamalsaadi06@gmail.com"
@@ -157,7 +157,14 @@ target_gene, query_isoform_id, query_seq = get_query()
 
 if query_seq:
     all_seqs = db.get_all_sequences_with_isoform("protein")
-    candidate_seqs = get_candidate_sequences(query_seq, all_seqs, k=KMER_K, top_n=20)
+    kmer_index = build_index_from_database(all_seqs, k=KMER_K)
+    candidate_seqs = get_candidate_sequences(
+        query_seq,
+        all_seqs,
+        k=KMER_K,
+        top_n=20,
+        index=kmer_index
+    )
 
     # --- Load JASPAR motifs and fetch query promoter ---
     print(f"\n--- Loading JASPAR motifs ---")
