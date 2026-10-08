@@ -1,47 +1,53 @@
 {% extends "base.html" %}
 {% block title %}Search — GeneSim{% endblock %}
 {% block page_title %}Similarity Search{% endblock %}
-{% block page_sub %}Compare a gene against 60 human genes using multiple metrics{% endblock %}
+{% block page_sub %}Step 2 of 2 · Compare a sequence against 60 human genes using multiple metrics{% endblock %}
 
 {% block content %}
+
+<!-- Workflow step indicator -->
+<div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
+    <a href="/fetch" style="text-decoration:none;">
+        <span style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:980px; font-size:11px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase; background:var(--bg); color:var(--text-muted); border:1px solid var(--border-light); cursor:pointer;">
+            Step 1: Fetch Sequence
+        </span>
+    </a>
+    <span style="color:var(--text-muted); font-size:12px;">→</span>
+    <span style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:980px; font-size:11px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase; background:var(--accent-light); color:var(--accent); border:1px solid #c8ddf8;">
+        Step 2: Similarity Search
+    </span>
+</div>
+
 <div style="display:grid; grid-template-columns:360px 1fr; gap:20px; align-items:start;">
 
     <!-- Left: Form -->
     <div>
         <div class="card">
-            <div class="card-title">Query Input</div>
-
-            <div class="tab-bar">
-                <button class="tab-btn active" id="tab-name" onclick="switchTab('name')">Gene Name</button>
-                <button class="tab-btn" id="tab-seq"  onclick="switchTab('seq')">Paste Sequence</button>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+                <div class="card-title" style="margin-bottom:0">Query Sequence</div>
+                <a href="/fetch" style="font-size:12px; color:var(--accent); text-decoration:none; font-weight:500;">
+                    📥 Fetch sequence →
+                </a>
             </div>
 
-            <!-- Gene name input -->
-            <div id="input-name">
-                <div class="form-group">
-                    <label class="form-label">Gene Symbol</label>
-                    <input type="text" id="gene-name" class="form-input"
-                           placeholder="e.g. TP53, BRCA2, KRAS"
-                           onkeydown="if(event.key==='Enter') runSearch()">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Sequence Type to Fetch</label>
-                    <select id="fetch-type" class="form-select">
-                        <option value="protein">Protein (amino acid)</option>
-                        <option value="dna">DNA (mRNA/nucleotide)</option>
-                    </select>
-                    <div class="text-muted text-sm mt-8">Fetched live from NCBI RefSeq</div>
-                </div>
+            <!-- Pre-loaded from fetch badge -->
+            <div id="loaded-banner" class="alert alert-info hidden" style="padding:8px 12px; font-size:12px; margin-bottom:12px; line-height:1.4;">
+                <div id="loaded-banner-text"></div>
             </div>
 
-            <!-- Paste sequence input -->
-            <div id="input-seq" class="hidden">
-                <div class="form-group">
-                    <label class="form-label">Paste Sequence</label>
-                    <textarea id="gene-seq" class="form-textarea" rows="6"
-                        placeholder=">optional_header&#10;MEEPQSDPSVEPPLSQETFSDLWKLLPENN...&#10;&#10;Or paste a DNA sequence (ATGC...)"></textarea>
-                    <div class="text-muted text-sm mt-8">Plain AA/DNA or FASTA format. Type is auto-detected.</div>
-                </div>
+            <div class="form-group" style="margin-bottom:10px;">
+                <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>Sequence (AA or DNA / FASTA)</span>
+                    <button class="btn btn-ghost btn-sm" onclick="clearSequence()" style="padding:2px 8px; font-size:11px; height:auto;">Clear</button>
+                </label>
+                <textarea id="gene-seq" class="form-textarea" rows="7"
+                    placeholder=">optional_header&#10;MEEPQSDPSVEPPLSQETFSDLWKLLPENN...&#10;&#10;Or paste a DNA sequence (ATGC...)"
+                    oninput="onSeqInput()"></textarea>
+            </div>
+
+            <div id="seq-meta-info" class="text-muted text-sm" style="display:flex; justify-content:space-between; align-items:center;">
+                <span id="detected-type-label">Type will be auto-detected</span>
+                <span id="seq-len-badge" style="font-family:var(--mono); font-size:11px;"></span>
             </div>
         </div>
 
@@ -148,17 +154,8 @@
 </div>
 
 <script>
-let currentTab = 'name';
 let allResults = [];
 let activeMetrics = [];
-
-function switchTab(tab) {
-    currentTab = tab;
-    document.getElementById('input-name').classList.toggle('hidden', tab !== 'name');
-    document.getElementById('input-seq').classList.toggle('hidden', tab !== 'seq');
-    document.getElementById('tab-name').classList.toggle('active', tab === 'name');
-    document.getElementById('tab-seq').classList.toggle('active', tab === 'seq');
-}
 
 function toggleChip(cb, id) {
     document.getElementById(id).classList.toggle('checked', cb.checked);
@@ -187,23 +184,85 @@ const METRIC_LABELS = {
     motif:  'Motif',
 };
 
+function clearSequence() {
+    document.getElementById('gene-seq').value = '';
+    document.getElementById('loaded-banner').classList.add('hidden');
+    sessionStorage.removeItem('genesim_query_seq');
+    sessionStorage.removeItem('genesim_query_symbol');
+    sessionStorage.removeItem('genesim_query_source');
+    sessionStorage.removeItem('genesim_query_isoform');
+    sessionStorage.removeItem('genesim_query_source_url');
+    onSeqInput();
+}
+
+function onSeqInput() {
+    const raw = document.getElementById('gene-seq').value.trim();
+    const typeLabel = document.getElementById('detected-type-label');
+    const lenBadge = document.getElementById('seq-len-badge');
+
+    if (!raw) {
+        typeLabel.textContent = 'Type will be auto-detected';
+        typeLabel.style.color = 'var(--text-muted)';
+        lenBadge.textContent = '';
+        return;
+    }
+
+    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    let seq = '';
+    if (lines.length && lines[0].startsWith('>')) {
+        seq = lines.slice(1).join('').toUpperCase().replace(/\s+/g, '');
+    } else {
+        seq = lines.join('').toUpperCase().replace(/\s+/g, '');
+    }
+
+    if (!seq) {
+        typeLabel.textContent = 'Enter sequence letters';
+        typeLabel.style.color = 'var(--text-muted)';
+        lenBadge.textContent = '';
+        return;
+    }
+
+    const isDna = !((/[^ATGCN]/i).test(seq));
+    if (isDna) {
+        typeLabel.innerHTML = '🧬 <strong style="color:var(--purple)">DNA sequence</strong>';
+        lenBadge.textContent = `${seq.length.toLocaleString()} bp`;
+    } else {
+        typeLabel.innerHTML = '🧪 <strong style="color:var(--accent)">Protein sequence</strong>';
+        lenBadge.textContent = `${seq.length.toLocaleString()} aa`;
+    }
+}
+
+// Check if preloaded from Step 1 (Fetch page)
+function checkPreloadedSeq() {
+    const storedSeq = sessionStorage.getItem('genesim_query_seq');
+    if (storedSeq) {
+        const symbol = sessionStorage.getItem('genesim_query_symbol') || 'Gene';
+        const source = sessionStorage.getItem('genesim_query_source') || 'Database';
+        const isoform = sessionStorage.getItem('genesim_query_isoform') || '';
+        const sourceUrl = sessionStorage.getItem('genesim_query_source_url') || '';
+
+        document.getElementById('gene-seq').value = storedSeq;
+        const banner = document.getElementById('loaded-banner');
+        const viewLink = sourceUrl ? ` · <a href="${sourceUrl}" target="_blank" rel="noopener noreferrer" style="color:var(--accent); font-weight:600; text-decoration:none;">View source ↗</a>` : '';
+        document.getElementById('loaded-banner-text').innerHTML =
+            `✓ Loaded sequence for <strong>${symbol}</strong> (${isoform ? isoform + ' · ' : ''}${source}${viewLink}). Ready to search!`;
+        banner.classList.remove('hidden');
+        onSeqInput();
+    }
+}
+
 async function runSearch() {
     const metrics = getSelectedMetrics();
     if (!metrics.length) { alert('Select at least one metric.'); return; }
 
     const topN = parseInt(document.getElementById('top-n').value);
-    let body;
-
-    if (currentTab === 'name') {
-        const name      = document.getElementById('gene-name').value.trim();
-        const fetchType = document.getElementById('fetch-type').value;
-        if (!name) { alert('Enter a gene name.'); return; }
-        body = { input_type: 'gene_name', gene_name: name, fetch_type: fetchType, metrics, top_n: topN };
-    } else {
-        const seq = document.getElementById('gene-seq').value.trim();
-        if (!seq) { alert('Paste a sequence.'); return; }
-        body = { input_type: 'sequence', sequence: seq, metrics, top_n: topN };
+    const seq = document.getElementById('gene-seq').value.trim();
+    if (!seq) {
+        alert('Please paste or provide a sequence to search against the database.\n\nYou can also click "Fetch sequence" at the top to retrieve one from NCBI, UniProt, or Ensembl.');
+        return;
     }
+
+    const body = { input_type: 'sequence', sequence: seq, metrics, top_n: topN };
 
     showDNA('Running similarity search...', 'Comparing against database isoforms');
     document.getElementById('search-btn').disabled = true;
@@ -367,12 +426,34 @@ async function loadRecent() {
     `).join('');
 }
 
-function rerunSearch(query, mode) {
-    // Switch to gene name tab, fill in the gene, set mode, run
-    switchTab('name');
-    document.getElementById('gene-name').value = query;
-    const sel = document.getElementById('fetch-type');
-    if (sel) sel.value = mode === 'dna' ? 'dna' : 'protein';
+async function rerunSearch(query, mode) {
+    // If the query was a gene symbol or label, try to fetch sequence from NCBI or populate directly
+    showDNA(`Loading ${query}...`, 'Retrieving query');
+    try {
+        const resp = await fetch('/api/fetch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gene_name: query, source: 'ncbi', seq_type: mode || 'protein' })
+        });
+        const data = await resp.json();
+        hideDNA();
+        if (resp.ok && data.sequence) {
+            document.getElementById('gene-seq').value = data.sequence;
+            const banner = document.getElementById('loaded-banner');
+            const viewLink = data.source_url ? ` · <a href="${data.source_url}" target="_blank" rel="noopener noreferrer" style="color:var(--accent); font-weight:600; text-decoration:none;">View source ↗</a>` : '';
+            document.getElementById('loaded-banner-text').innerHTML =
+                `✓ Loaded sequence for <strong>${query}</strong> (${data.source}${viewLink}).`;
+            banner.classList.remove('hidden');
+            onSeqInput();
+            runSearch();
+            return;
+        }
+    } catch (e) {
+        hideDNA();
+    }
+    // Fallback: paste query directly
+    document.getElementById('gene-seq').value = query;
+    onSeqInput();
     runSearch();
 }
 
@@ -381,7 +462,8 @@ async function clearRecent() {
     loadRecent();
 }
 
-// Load recent searches on page load
+// Check pre-loaded sequence from Step 1 (Fetch page) and recent searches
+checkPreloadedSeq();
 loadRecent();
 </script>
 {% endblock %}

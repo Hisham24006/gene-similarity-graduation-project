@@ -12,6 +12,7 @@ import time
 import random
 
 import numpy as np
+import requests
 from flask import Flask, render_template, request, jsonify
 
 # ── Paths ──
@@ -143,7 +144,7 @@ def dna_similarity(seq_a, seq_b):
 
 
 def fetch_from_ncbi(gene_name, seq_type='protein'):
-    """Fetch protein or DNA sequence from NCBI. Returns (isoform_id, seq, error)."""
+    """Fetch protein or DNA sequence from NCBI. Returns (isoform_id, seq, description, error)."""
     try:
         if seq_type == 'protein':
             db_name = "protein"
@@ -157,16 +158,104 @@ def fetch_from_ncbi(gene_name, seq_type='protein'):
         handle.close()
 
         if not record["IdList"]:
-            return None, None, f"No {seq_type} results found on NCBI for {gene_name}"
+            return None, None, None, f"No {seq_type} results found on NCBI for '{gene_name}'"
 
         fmt    = "fasta"
         handle = Entrez.efetch(db=db_name, id=record["IdList"][0], rettype=fmt, retmode="text")
         seq_record = SeqIO.read(StringIO(handle.read()), "fasta")
         handle.close()
-        return seq_record.id, str(seq_record.seq), None
+        return seq_record.id, str(seq_record.seq), seq_record.description, None
 
     except Exception as e:
-        return None, None, str(e)
+        return None, None, None, str(e)
+
+
+def fetch_from_uniprot(gene_name, seq_type='protein'):
+    """Fetch protein sequence from UniProt. Returns (isoform_id, seq, description, error)."""
+    if seq_type == 'dna':
+        return None, None, None, "UniProt is a curated protein sequence database and does not store nucleotide/DNA sequences. Please choose NCBI or Ensembl to fetch DNA."
+    try:
+        url = (
+            f"https://rest.uniprot.org/uniprotkb/search"
+            f"?query=gene_exact:{gene_name}+AND+organism_id:9606+AND+reviewed:true"
+            f"&format=fasta&size=1"
+        )
+        res = requests.get(url, timeout=12)
+        if res.status_code == 200 and res.text.strip():
+            seq_record = SeqIO.read(StringIO(res.text), "fasta")
+            return seq_record.id, str(seq_record.seq), seq_record.description, None
+
+        # Fallback without reviewed:true
+        url2 = (
+            f"https://rest.uniprot.org/uniprotkb/search"
+            f"?query=gene_exact:{gene_name}+AND+organism_id:9606"
+            f"&format=fasta&size=1"
+        )
+        res2 = requests.get(url2, timeout=12)
+        if res2.status_code == 200 and res2.text.strip():
+            seq_record = SeqIO.read(StringIO(res2.text), "fasta")
+            return seq_record.id, str(seq_record.seq), seq_record.description, None
+
+        return None, None, None, f"No protein sequence found on UniProt for '{gene_name}'"
+    except Exception as e:
+        return None, None, None, f"UniProt error: {str(e)}"
+
+
+def fetch_from_ensembl(gene_name, seq_type='protein'):
+    """Fetch sequence from Ensembl REST API. Returns (isoform_id, seq, description, error)."""
+    headers = {'Content-Type': 'application/json', 'User-Agent': 'GeneSim/1.0'}
+    try:
+        url_lookup = f"http://rest.ensembl.org/lookup/symbol/homo_sapiens/{gene_name}?expand=1"
+        try:
+            res = requests.get(url_lookup, headers=headers, timeout=8)
+        except Exception:
+            url_lookup = f"https://rest.ensembl.org/lookup/symbol/homo_sapiens/{gene_name}?expand=1"
+            res = requests.get(url_lookup, headers=headers, timeout=8)
+
+        if res.status_code != 200:
+            return None, None, None, f"Gene '{gene_name}' not found on Ensembl"
+
+        data = res.json()
+        gene_id = data.get("id")
+        display_name = data.get("display_name", gene_name)
+        desc = data.get("description", "")
+
+        transcripts = data.get("Transcript", [])
+        target_id = None
+        for tr in transcripts:
+            if tr.get("is_canonical") == 1:
+                if seq_type == "protein" and tr.get("Translation"):
+                    target_id = tr["Translation"].get("id")
+                else:
+                    target_id = tr.get("id")
+                break
+
+        if not target_id and transcripts:
+            tr0 = transcripts[0]
+            target_id = tr0["Translation"].get("id") if (seq_type == "protein" and tr0.get("Translation")) else tr0.get("id")
+
+        if not target_id:
+            target_id = gene_id
+
+        url_seq = f"http://rest.ensembl.org/sequence/id/{target_id}"
+        try:
+            res_seq = requests.get(url_seq, headers=headers, timeout=8)
+        except Exception:
+            url_seq = f"https://rest.ensembl.org/sequence/id/{target_id}"
+            res_seq = requests.get(url_seq, headers=headers, timeout=8)
+
+        if res_seq.status_code == 200:
+            seq = res_seq.json().get("seq")
+            if seq:
+                desc_str = f"{display_name} | {target_id} | {desc}" if desc else f"{display_name} | {target_id} | Homo sapiens"
+                return target_id, str(seq), desc_str, None
+
+        return None, None, None, f"Could not retrieve sequence from Ensembl for '{gene_name}'"
+
+    except requests.exceptions.Timeout:
+        return None, None, None, "Ensembl REST API timed out. Ensembl servers may be experiencing high latency; please try NCBI or UniProt."
+    except Exception as e:
+        return None, None, None, f"Ensembl error: {str(e)}"
 
 
 def get_promoter_tfs(symbol):
@@ -293,7 +382,66 @@ def benchmark():
     return render_template('benchmark.html')
 
 
+@app.route('/fetch')
+def fetch_page():
+    return render_template('fetch.html')
+
+
 # ── API routes ──
+
+@app.route('/api/fetch', methods=['POST'])
+def api_fetch():
+    data = request.json or {}
+    gene_name = data.get('gene_name', '').strip().upper()
+    source = data.get('source', 'ncbi').strip().lower()
+    seq_type = data.get('seq_type', 'protein').strip().lower()
+
+    if not gene_name:
+        return jsonify({'error': 'Please enter a gene symbol (e.g. TP53, BRCA1, EGFR).'}), 400
+
+    if source == 'ncbi':
+        iso_id, seq, desc, error = fetch_from_ncbi(gene_name, seq_type)
+        source_name = 'NCBI RefSeq'
+    elif source == 'uniprot':
+        iso_id, seq, desc, error = fetch_from_uniprot(gene_name, seq_type)
+        source_name = 'UniProt'
+    elif source == 'ensembl':
+        iso_id, seq, desc, error = fetch_from_ensembl(gene_name, seq_type)
+        source_name = 'Ensembl'
+    else:
+        return jsonify({'error': f"Unknown website '{source}'. Please choose NCBI, UniProt, or Ensembl."}), 400
+
+    if error:
+        return jsonify({'error': error}), 400
+
+    fasta_header = f">{iso_id} {desc or (gene_name + ' ' + seq_type)}"
+    fasta_str = f"{fasta_header}\n{seq}"
+
+    source_url = None
+    if source == 'ncbi':
+        if seq_type == 'protein':
+            source_url = f"https://www.ncbi.nlm.nih.gov/protein/{iso_id}"
+        else:
+            source_url = f"https://www.ncbi.nlm.nih.gov/nuccore/{iso_id}"
+    elif source == 'uniprot':
+        uniprot_acc = iso_id.split('|')[1] if '|' in iso_id else iso_id
+        source_url = f"https://www.uniprot.org/uniprotkb/{uniprot_acc}/entry"
+    elif source == 'ensembl':
+        source_url = f"https://www.ensembl.org/id/{iso_id}"
+
+    return jsonify({
+        'symbol': gene_name,
+        'source': source_name,
+        'source_key': source,
+        'seq_type': seq_type,
+        'isoform_id': iso_id,
+        'sequence': seq,
+        'length': len(seq),
+        'description': desc or f"{gene_name} {seq_type} sequence from {source_name}",
+        'fasta': fasta_str,
+        'source_url': source_url
+    })
+
 
 @app.route('/api/search', methods=['POST'])
 def api_search():
@@ -307,7 +455,7 @@ def api_search():
     # ── Get query sequence ──
     if input_type == 'gene_name':
         gene_name   = data.get('gene_name', '').upper().strip()
-        isoform_id, query_seq, error = fetch_from_ncbi(gene_name, fetch_type)
+        isoform_id, query_seq, _, error = fetch_from_ncbi(gene_name, fetch_type)
         if error:
             return jsonify({'error': error}), 400
         query_label = gene_name
