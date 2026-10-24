@@ -28,7 +28,7 @@ aligner.mode = 'local'
 aligner.open_gap_score = -10
 aligner.extend_gap_score = -0.5
 
-# Valid amino acid characters
+# Valid amino acid characters.
 VALID_AA = set("ACDEFGHIKLMNPQRSTVWYacdefghiklmnpqrstvwy")
 
 
@@ -174,7 +174,7 @@ if query_seq:
     print(f"    Database : {len(all_seqs)} protein isoforms")
     print(f"    Metrics  : BLOSUM62, K-mer (k={KMER_K}), Edit distance, Motif (JASPAR)\n")
 
-    # Cache promoters and TF sets for all unique gene symbols
+    # Cache promoters and TF sets for all unique gene symbols.
     gene_symbols  = list(set(s for s, i, _ in all_seqs))
     promoter_tfs  = {}
     print("  Pre-fetching promoters for database genes...")
@@ -236,7 +236,7 @@ if query_seq:
     plot_heatmap(all_seqs, edit_distance_similarity,
                  "Edit distance", target_gene, output_dir=RESULTS_DIR)
 
-    # Optional BLOSUM62 heatmap
+    # Optional BLOSUM62 heatmap.
     print(f"\n  Generate BLOSUM62 heatmap?")
     print(f"  Warning: this runs a full pairwise alignment for every gene pair.")
     print(f"  With {len(gene_symbols)} genes it could take 10-30 minutes.")
@@ -246,7 +246,7 @@ if query_seq:
     else:
         print("  Skipping BLOSUM62 heatmap.")
 
-    # Motif heatmap
+    # Motif heatmap.
     print(f"\n  Generate Motif similarity heatmap?")
     print(f"  Note: promoters are already cached so this should be fast.")
     if input("  Generate it? (y/n): ").strip().lower() == "y":
