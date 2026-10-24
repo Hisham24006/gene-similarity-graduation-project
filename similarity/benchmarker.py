@@ -2,8 +2,8 @@
 benchmarker.py
 --------------
 Benchmarks all similarity metrics in terms of:
-    - Speed    : how long each metric takes to run
-    - Agreement: how well each metric agrees with BLOSUM62 (Pearson correlation)
+    - Speed    : how long each metric takes to run.
+    - Agreement: how well each metric agrees with BLOSUM62 (Pearson correlation).
 
 Output:
     - Printed benchmark table
@@ -71,7 +71,7 @@ def load_benchmark_data():
     all_seqs = db.get_all_sequences_with_isoform("protein")
     db.close()
 
-    # Use first isoform per gene
+    # Use first isoform per gene.
     seen = {}
     for symbol, isoform_id, seq in all_seqs:
         if symbol not in seen:
@@ -79,7 +79,7 @@ def load_benchmark_data():
 
     genes = list(seen.keys())
 
-    # Build sequence pairs (random sample)
+    # Build sequence pairs (random sample).
     import random
     random.seed(42)
     all_pairs = [(a, b) for i, a in enumerate(genes) for b in genes[i+1:]]
