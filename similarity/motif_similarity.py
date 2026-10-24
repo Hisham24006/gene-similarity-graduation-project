@@ -5,10 +5,10 @@ Computes gene similarity based on shared transcription factor binding motifs
 using JASPAR motif profiles via pyJASPAR and Biopython motif scanning.
 
 Pipeline:
-    1. Load all human TF motifs from JASPAR via pyJASPAR
-    2. Fetch promoter region (1000 bp upstream) from Ensembl for each gene
-    3. Scan promoter against all JASPAR motifs using Biopython PSSMs
-    4. Compare two genes by their shared TF binding site sets (Jaccard similarity)
+    1. Load all human TF motifs from JASPAR via pyJASPAR.
+    2. Fetch promoter region (1000 bp upstream) from Ensembl for each gene.
+    3. Scan promoter against all JASPAR motifs using Biopython PSSMs.
+    4. Compare two genes by their shared TF binding site sets (Jaccard similarity).
 
 Functions:
     load_jaspar_motifs()                 -> list of Biopython motif objects
@@ -68,7 +68,7 @@ def load_jaspar_motifs():
         try:
             pssm = m.counts.normalize(pseudocounts=PSEUDOCOUNT).log_odds()
 
-            # Max possible score = best base at each position
+            # Max possible score = best base at each position.
             max_score = sum(
                 max(pssm[base][i] for base in "ACGT")
                 for i in range(m.length)
@@ -125,7 +125,7 @@ def fetch_promoter(gene_symbol):
         if not chrom or not tss:
             return None
 
-        # Step 2: fetch upstream sequence
+        # Step 2: fetch upstream sequence.
         if strand == 1:
             seq_start = max(1, tss - PROMOTER_BP)
             seq_end   = tss
