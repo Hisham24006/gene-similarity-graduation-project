@@ -19,31 +19,20 @@ Functions:
 """
 
 import os
-import ssl
 import time
 import json
 import requests
 from pyjaspar import jaspardb
 from Bio.Seq import Seq
 
-# -----------------------------------------------------------------------
-# SSL fix
-# -----------------------------------------------------------------------
-if not os.environ.get('PYTHONHTTPSVERIFY', '') and getattr(ssl, '_create_unverified_context', None):
-    ssl._create_default_https_context = ssl._create_unverified_context
-
-# -----------------------------------------------------------------------
-# Configuration
-# -----------------------------------------------------------------------
-
-PROMOTER_BP              = 1000   # bp upstream of TSS to fetch
-PSEUDOCOUNT              = 0.5    # avoids log(0) in PSSM
-SCORE_THRESHOLD_FRACTION = 0.80   # hit must score >= 80% of max possible
-
-# Cache file paths
-CACHE_DIR      = os.path.join(os.path.dirname(__file__), '..', 'data')
-PROMOTER_CACHE = os.path.join(CACHE_DIR, 'promoter_cache.json')
-TF_CACHE       = os.path.join(CACHE_DIR, 'tf_cache.json')
+from config import (
+    PROMOTER_CACHE_PATH as PROMOTER_CACHE,
+    TF_CACHE_PATH as TF_CACHE,
+    DATA_DIR as CACHE_DIR,
+    PROMOTER_BP,
+    PSEUDOCOUNT,
+    SCORE_THRESHOLD_FRACTION
+)
 
 
 # -----------------------------------------------------------------------

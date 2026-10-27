@@ -17,44 +17,22 @@ Usage:
 import os
 import sys
 import time
-import ssl
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
-if not os.environ.get('PYTHONHTTPSVERIFY', '') and getattr(ssl, '_create_unverified_context', None):
-    ssl._create_default_https_context = ssl._create_unverified_context
-
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'database'))
 
+from config import DB_PATH, RESULTS_DIR, KMER_K
 from database_manager import GeneDatabase
-from metrics import kmer_similarity, edit_distance_similarity
+from metrics import kmer_similarity, edit_distance_similarity, blosum_similarity
 from motif_similarity import load_jaspar_motifs, fetch_promoter, cached_scan_motifs, jaccard_motif_similarity
-from Bio.Align import PairwiseAligner, substitution_matrices
 
 # -----------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------
+N_PAIRS = 50  # number of random sequence pairs to benchmark
 
-DB_PATH     = os.path.join(os.path.dirname(__file__), '..', 'database', 'gene_vault.db')
-RESULTS_DIR = os.path.join(os.path.dirname(__file__), '..', 'results')
-KMER_K      = 3
-N_PAIRS     = 50  # number of random sequence pairs to benchmark
-
-# -----------------------------------------------------------------------
-# BLOSUM62 setup
-# -----------------------------------------------------------------------
-
-aligner = PairwiseAligner()
-aligner.substitution_matrix = substitution_matrices.load("BLOSUM62")
-aligner.mode = 'local'
-aligner.open_gap_score = -10
-aligner.extend_gap_score = -0.5
-
-def blosum_similarity(seq_a, seq_b):
-    score = aligner.score(seq_a, seq_b)
-    max_score = aligner.score(seq_a, seq_a)
-    return max(0.0, score / max_score) if max_score > 0 else 0.0
 
 # -----------------------------------------------------------------------
 # Load data
@@ -67,7 +45,7 @@ def load_benchmark_data():
         seq_pairs  : list of (symbol_a, seq_a, symbol_b, seq_b) tuples
         tf_map     : dict {symbol: set of TF names}
     """
-    db       = GeneDatabase(db_path=DB_PATH)
+    db = GeneDatabase(db_path=DB_PATH)
     all_seqs = db.get_all_sequences_with_isoform("protein")
     db.close()
 
@@ -82,8 +60,8 @@ def load_benchmark_data():
     # Build sequence pairs (random sample).
     import random
     random.seed(42)
-    all_pairs = [(a, b) for i, a in enumerate(genes) for b in genes[i+1:]]
-    pairs     = random.sample(all_pairs, min(N_PAIRS, len(all_pairs)))
+    all_pairs = [(a, b) for i, a in enumerate(genes) for b in genes[i + 1:]]
+    pairs = random.sample(all_pairs, min(N_PAIRS, len(all_pairs)))
     seq_pairs = [(a, seen[a], b, seen[b]) for a, b in pairs]
 
     # Load TF sets from cache
@@ -93,8 +71,8 @@ def load_benchmark_data():
     print("  Loading promoter TF sets...")
     tf_map = {}
     for symbol in genes:
-        promoter        = fetch_promoter(symbol)
-        tf_map[symbol]  = cached_scan_motifs(symbol, promoter, bio_motifs) if promoter else set()
+        promoter = fetch_promoter(symbol)
+        tf_map[symbol] = cached_scan_motifs(symbol, promoter, bio_motifs) if promoter else set()
 
     return seq_pairs, tf_map
 
@@ -109,10 +87,10 @@ def benchmark(seq_pairs, tf_map):
     Returns a dict with metric names as keys and lists of (score, time) as values.
     """
     metrics = {
-        "BLOSUM62":      {"scores": [], "times": []},
-        "K-mer (k=3)":   {"scores": [], "times": []},
+        "BLOSUM62": {"scores": [], "times": []},
+        "K-mer (k=3)": {"scores": [], "times": []},
         "Edit distance": {"scores": [], "times": []},
-        "Motif (JASPAR)":{"scores": [], "times": []},
+        "Motif (JASPAR)": {"scores": [], "times": []},
     }
 
     total = len(seq_pairs)
@@ -123,25 +101,25 @@ def benchmark(seq_pairs, tf_map):
 
         # BLOSUM62
         t0 = time.perf_counter()
-        s  = blosum_similarity(seq_a, seq_b)
+        s = blosum_similarity(seq_a, seq_b)
         metrics["BLOSUM62"]["scores"].append(s)
         metrics["BLOSUM62"]["times"].append(time.perf_counter() - t0)
 
         # K-mer
         t0 = time.perf_counter()
-        s  = kmer_similarity(seq_a, seq_b, k=KMER_K)
+        s = kmer_similarity(seq_a, seq_b, k=KMER_K)
         metrics["K-mer (k=3)"]["scores"].append(s)
         metrics["K-mer (k=3)"]["times"].append(time.perf_counter() - t0)
 
         # Edit distance
         t0 = time.perf_counter()
-        s  = edit_distance_similarity(seq_a, seq_b)
+        s = edit_distance_similarity(seq_a, seq_b)
         metrics["Edit distance"]["scores"].append(s)
         metrics["Edit distance"]["times"].append(time.perf_counter() - t0)
 
         # Motif
         t0 = time.perf_counter()
-        s  = jaccard_motif_similarity(
+        s = jaccard_motif_similarity(
             tf_map.get(sym_a, set()),
             tf_map.get(sym_b, set())
         )
@@ -164,11 +142,11 @@ def print_table(metrics):
     print("=" * 72)
 
     for name, data in metrics.items():
-        times  = np.array(data["times"]) * 1000  # convert to ms
+        times = np.array(data["times"]) * 1000  # convert to ms
         scores = np.array(data["scores"])
-        avg_t  = np.mean(times)
-        min_t  = np.min(times)
-        max_t  = np.max(times)
+        avg_t = np.mean(times)
+        min_t = np.min(times)
+        max_t = np.max(times)
 
         # Pearson correlation with BLOSUM62
         if name == "BLOSUM62":
@@ -191,8 +169,8 @@ def plot_speed(metrics, output_dir):
     """Bar chart comparing average time per comparison for each metric."""
     os.makedirs(output_dir, exist_ok=True)
 
-    names  = list(metrics.keys())
-    times  = [np.mean(metrics[n]["times"]) * 1000 for n in names]
+    names = list(metrics.keys())
+    times = [np.mean(metrics[n]["times"]) * 1000 for n in names]
     colors = ["#4C72B0", "#55A868", "#C44E52", "#EF9F27"]
 
     fig, ax = plt.subplots(figsize=(9, 5))
@@ -227,19 +205,19 @@ def plot_agreement(metrics, output_dir):
 
     blosum_scores = np.array(metrics["BLOSUM62"]["scores"])
     other_metrics = {k: v for k, v in metrics.items() if k != "BLOSUM62"}
-    colors        = ["#55A868", "#C44E52", "#EF9F27"]
+    colors = ["#55A868", "#C44E52", "#EF9F27"]
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     fig.suptitle("Metric agreement vs BLOSUM62", fontsize=13, y=1.02)
 
     for ax, (name, data), color in zip(axes, other_metrics.items(), colors):
         scores = np.array(data["scores"])
-        corr   = np.corrcoef(blosum_scores, scores)[0, 1]
+        corr = np.corrcoef(blosum_scores, scores)[0, 1]
 
         ax.scatter(blosum_scores, scores, color=color, alpha=0.7, edgecolors="white", s=60)
 
         # Trend line
-        m, b   = np.polyfit(blosum_scores, scores, 1)
+        m, b = np.polyfit(blosum_scores, scores, 1)
         x_line = np.linspace(0, 1, 100)
         ax.plot(x_line, m * x_line + b, color="black", linewidth=1, linestyle="--", alpha=0.6)
 
