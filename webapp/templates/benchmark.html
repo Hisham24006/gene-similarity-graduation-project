@@ -33,6 +33,16 @@
 
             <div class="stat-row" id="bench-stats"></div>
 
+            <div class="card" id="cpu-info-card">
+                <div class="card-title">CPU Info</div>
+                <div id="cpu-info-body" class="text-sm" style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:14px;"></div>
+                <div class="text-muted text-sm" style="text-transform:uppercase; font-size:11px; letter-spacing:0.04em; margin-bottom:6px;">During this benchmark run</div>
+                <div id="cpu-usage-body" class="text-sm" style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px;"></div>
+                <div class="text-muted text-sm mt-8">
+                    Process CPU % is how busy this app kept the CPU while running the test; System CPU % is the whole machine's load (other programs included). Timings depend on this hardware — the relative speed between metrics matters more than the absolute numbers.
+                </div>
+            </div>
+
             <div class="card">
                 <div class="card-title">Speed & Agreement</div>
                 <div style="overflow-x:auto;">
@@ -41,6 +51,7 @@
                             <tr>
                                 <th>Metric</th>
                                 <th>Avg time</th>
+                                <th>Avg CPU time</th>
                                 <th>Min</th>
                                 <th>Max</th>
                                 <th>vs BLOSUM62 (r)</th>
@@ -110,6 +121,27 @@ function renderBenchmark(data) {
         <div class="stat-chip"><div class="stat-val">4</div><div class="stat-label">Metrics compared</div></div>
     `;
 
+    if (data.cpu) {
+        const freq = data.cpu.freq_mhz ? `${(data.cpu.freq_mhz/1000).toFixed(2)} GHz` : 'n/a';
+        document.getElementById('cpu-info-body').innerHTML = `
+            <div><div class="text-muted" style="font-size:11px; text-transform:uppercase;">CPU</div><div style="font-weight:600;">${data.cpu.model}</div></div>
+            <div><div class="text-muted" style="font-size:11px; text-transform:uppercase;">Cores (physical / logical)</div><div style="font-weight:600;">${data.cpu.cores_physical} / ${data.cpu.cores_logical}</div></div>
+            <div><div class="text-muted" style="font-size:11px; text-transform:uppercase;">Clock Speed</div><div style="font-weight:600;">${freq}</div></div>
+            <div><div class="text-muted" style="font-size:11px; text-transform:uppercase;">OS / Python</div><div style="font-weight:600;">${data.cpu.os} · ${data.cpu.python_version}</div></div>
+        `;
+    }
+
+    if (data.usage) {
+        const u = data.usage;
+        const pctColor = v => v >= 80 ? 'var(--red)' : v >= 40 ? 'var(--orange)' : 'var(--green)';
+        document.getElementById('cpu-usage-body').innerHTML = `
+            <div><div class="text-muted" style="font-size:11px; text-transform:uppercase;">Process CPU %</div><div style="font-weight:600; color:${pctColor(u.process_cpu_percent)}">${u.process_cpu_percent}%</div></div>
+            <div><div class="text-muted" style="font-size:11px; text-transform:uppercase;">System CPU %</div><div style="font-weight:600; color:${pctColor(u.system_cpu_percent)}">${u.system_cpu_percent}%</div></div>
+            <div><div class="text-muted" style="font-size:11px; text-transform:uppercase;">Memory Used</div><div style="font-weight:600;">${u.memory_mb} MB <span class="text-muted" style="font-weight:400;">(+${u.memory_delta_mb} MB)</span></div></div>
+            <div><div class="text-muted" style="font-size:11px; text-transform:uppercase;">Total Run Time</div><div style="font-weight:600;">${u.wall_time_s}s</div></div>
+        `;
+    }
+
     const maxTime = Math.max(...data.results.map(r => r.avg_ms));
 
     document.getElementById('bench-tbody').innerHTML = data.results.map(r => {
@@ -120,6 +152,7 @@ function renderBenchmark(data) {
         return `<tr>
             <td><span style="color:${color}; font-weight:600">${r.metric}</span></td>
             <td class="text-mono text-sm">${r.avg_ms.toFixed(3)} ms</td>
+            <td class="text-mono text-sm">${r.avg_cpu_ms.toFixed(3)} ms</td>
             <td class="text-mono text-sm text-muted">${r.min_ms.toFixed(3)}</td>
             <td class="text-mono text-sm text-muted">${r.max_ms.toFixed(3)}</td>
             <td><span class="text-mono" style="color:${corrColor}; font-weight:600">${r.corr.toFixed(4)}</span></td>
