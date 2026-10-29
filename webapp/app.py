@@ -10,6 +10,8 @@ import base64
 import time
 import random
 import threading
+import platform
+import psutil
 
 import numpy as np
 from flask import Flask, render_template, request, jsonify
@@ -441,6 +443,34 @@ def api_gene_sequence(symbol):
     return jsonify({'symbol': sym, 'isoform_id': iso_id, 'type': seq_type, 'sequence': seq, 'length': len(seq)})
 
 
+def get_cpu_info():
+    """Return basic info about the machine the benchmark is running on."""
+    model = platform.processor() or platform.machine()
+
+    # platform.processor() is usually blank on Linux, so read /proc/cpuinfo instead
+    if sys.platform.startswith('linux'):
+        try:
+            with open('/proc/cpuinfo') as f:
+                for line in f:
+                    if line.lower().startswith('model name'):
+                        model = line.split(':', 1)[1].strip()
+                        break
+        except OSError:
+            pass
+
+    freq = psutil.cpu_freq()
+
+    return {
+        'model': model or 'Unknown CPU',
+        'cores_logical': os.cpu_count() or 1,
+        'cores_physical': psutil.cpu_count(logical=False) or os.cpu_count() or 1,
+        'freq_mhz': round(freq.current, 0) if freq else None,
+        'architecture': platform.machine(),
+        'os': f'{platform.system()} {platform.release()}',
+        'python_version': platform.python_version(),
+    }
+
+
 @app.route('/api/benchmark', methods=['POST'])
 def api_benchmark():
     n_pairs = int(request.json.get('n_pairs', 20))
@@ -462,39 +492,61 @@ def api_benchmark():
     tf_map = {s: get_promoter_tfs(s) for s in genes}
 
     metric_data = {
-        'BLOSUM62':       {'times': [], 'scores': []},
-        'K-mer (k=3)':    {'times': [], 'scores': []},
-        'Edit distance':  {'times': [], 'scores': []},
-        'Motif (JASPAR)': {'times': [], 'scores': []},
+        'BLOSUM62':       {'times': [], 'cpu_times': [], 'scores': []},
+        'K-mer (k=3)':    {'times': [], 'cpu_times': [], 'scores': []},
+        'Edit distance':  {'times': [], 'cpu_times': [], 'scores': []},
+        'Motif (JASPAR)': {'times': [], 'cpu_times': [], 'scores': []},
     }
+
+    # Prime the CPU-usage counters so the readings taken after the loop
+    # reflect usage DURING the benchmark, not since the process started.
+    proc = psutil.Process()
+    proc.cpu_percent(interval=None)
+    psutil.cpu_percent(interval=None)
+    mem_before_mb = proc.memory_info().rss / (1024 * 1024)
+
+    wall_start = time.perf_counter()
 
     for sym_a, sym_b in pairs:
         sa, sb = seen[sym_a], seen[sym_b]
 
-        t0 = time.perf_counter()
+        t0, c0 = time.perf_counter(), time.process_time()
         s = blosum_similarity(sa, sb)
         metric_data['BLOSUM62']['times'].append((time.perf_counter() - t0) * 1000)
+        metric_data['BLOSUM62']['cpu_times'].append((time.process_time() - c0) * 1000)
         metric_data['BLOSUM62']['scores'].append(s)
 
-        t0 = time.perf_counter()
+        t0, c0 = time.perf_counter(), time.process_time()
         s = kmer_similarity(sa, sb, k=KMER_K)
         metric_data['K-mer (k=3)']['times'].append((time.perf_counter() - t0) * 1000)
+        metric_data['K-mer (k=3)']['cpu_times'].append((time.process_time() - c0) * 1000)
         metric_data['K-mer (k=3)']['scores'].append(s)
 
-        t0 = time.perf_counter()
+        t0, c0 = time.perf_counter(), time.process_time()
         s = edit_distance_similarity(sa, sb)
         metric_data['Edit distance']['times'].append((time.perf_counter() - t0) * 1000)
+        metric_data['Edit distance']['cpu_times'].append((time.process_time() - c0) * 1000)
         metric_data['Edit distance']['scores'].append(s)
 
-        t0 = time.perf_counter()
+        t0, c0 = time.perf_counter(), time.process_time()
         s = jaccard_motif_similarity(tf_map.get(sym_a, set()), tf_map.get(sym_b, set()))
         metric_data['Motif (JASPAR)']['times'].append((time.perf_counter() - t0) * 1000)
+        metric_data['Motif (JASPAR)']['cpu_times'].append((time.process_time() - c0) * 1000)
         metric_data['Motif (JASPAR)']['scores'].append(s)
+
+    wall_elapsed = time.perf_counter() - wall_start
+
+    # Usage readings taken right after the loop finishes, covering the
+    # whole benchmark run.
+    process_cpu_pct = proc.cpu_percent(interval=None)
+    system_cpu_pct = psutil.cpu_percent(interval=None)
+    mem_after_mb = proc.memory_info().rss / (1024 * 1024)
 
     blosum_scores = np.array(metric_data['BLOSUM62']['scores'])
     summary = []
     for name, d in metric_data.items():
         times = np.array(d['times'])
+        cpu_times = np.array(d['cpu_times'])
         scores = np.array(d['scores'])
         corr = float(np.corrcoef(blosum_scores, scores)[0, 1]) if name != 'BLOSUM62' else 1.0
         summary.append({
@@ -502,10 +554,22 @@ def api_benchmark():
             'avg_ms': round(float(np.mean(times)), 3),
             'min_ms': round(float(np.min(times)), 3),
             'max_ms': round(float(np.max(times)), 3),
+            'avg_cpu_ms': round(float(np.mean(cpu_times)), 3),
             'corr':   round(corr, 4),
         })
 
-    return jsonify({'pairs_tested': len(pairs), 'results': summary})
+    return jsonify({
+        'pairs_tested': len(pairs),
+        'results': summary,
+        'cpu': get_cpu_info(),
+        'usage': {
+            'wall_time_s': round(wall_elapsed, 3),
+            'process_cpu_percent': round(process_cpu_pct, 1),
+            'system_cpu_percent': round(system_cpu_pct, 1),
+            'memory_mb': round(mem_after_mb, 1),
+            'memory_delta_mb': round(mem_after_mb - mem_before_mb, 1),
+        },
+    })
 
 
 if __name__ == '__main__':
