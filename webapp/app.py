@@ -442,7 +442,7 @@ def api_gene_sequence(symbol):
 
     return jsonify({'symbol': sym, 'isoform_id': iso_id, 'type': seq_type, 'sequence': seq, 'length': len(seq)})
 
-
+# Used by /api/benchmark to report hardware + usage context alongside timings
 def get_cpu_info():
     """Return basic info about the machine the benchmark is running on."""
     model = platform.processor() or platform.machine()
