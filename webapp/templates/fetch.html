@@ -1,0 +1,533 @@
+{% extends "base.html" %}
+{% block title %}Fetch Sequence — GeneSim{% endblock %}
+{% block page_title %}Fetch Sequence{% endblock %}
+{% block page_sub %}Step 1 of 2 · Fetch DNA or protein sequences from NCBI, UniProt, or Ensembl{% endblock %}
+
+{% block head %}
+<style>
+    .source-card {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px 14px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border-light);
+        background: var(--bg);
+        cursor: pointer;
+        transition: all 0.15s ease;
+        margin-bottom: 8px;
+    }
+    .source-card:hover {
+        border-color: var(--border);
+        background: #f0f0f4;
+    }
+    .source-card.active {
+        border-color: var(--accent);
+        background: var(--accent-light);
+    }
+    .source-card input[type="radio"] {
+        margin-top: 3px;
+        accent-color: var(--accent);
+    }
+    .source-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .source-desc {
+        font-size: 11px;
+        color: var(--text-muted);
+        margin-top: 2px;
+        line-height: 1.4;
+    }
+    .step-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 980px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+    .step-badge-active {
+        background: var(--accent-light);
+        color: var(--accent);
+        border: 1px solid #c8ddf8;
+    }
+    .step-badge-next {
+        background: var(--bg);
+        color: var(--text-muted);
+        border: 1px solid var(--border-light);
+    }
+    .quick-chip {
+        display: inline-block;
+        padding: 3px 9px;
+        border-radius: 980px;
+        font-size: 11px;
+        font-family: var(--mono);
+        font-weight: 500;
+        color: var(--text-mid);
+        background: var(--bg);
+        border: 1px solid var(--border-light);
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .quick-chip:hover {
+        background: var(--accent-light);
+        color: var(--accent);
+        border-color: var(--accent);
+    }
+    .seq-view-box {
+        max-height: 340px;
+        overflow-y: auto;
+        font-family: var(--mono);
+        font-size: 12px;
+        line-height: 1.8;
+        letter-spacing: 0.05em;
+        word-break: break-all;
+        white-space: pre-wrap;
+        background: var(--bg);
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius-sm);
+        padding: 16px;
+        color: var(--text);
+        user-select: all;
+    }
+    .copy-toast {
+        position: fixed;
+        bottom: 28px;
+        right: 28px;
+        background: #1d1d1f;
+        color: #fff;
+        padding: 10px 18px;
+        border-radius: 980px;
+        font-size: 13px;
+        font-weight: 500;
+        box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+        z-index: 1000;
+        opacity: 0;
+        transform: translateY(10px);
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        pointer-events: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .copy-toast.visible {
+        opacity: 1;
+        transform: translateY(0);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Workflow step indicator -->
+<div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
+    <span class="step-badge step-badge-active">Step 1: Fetch & Inspect</span>
+    <span style="color:var(--text-muted); font-size:12px;">→</span>
+    <a href="/" style="text-decoration:none;"><span class="step-badge step-badge-next">Step 2: Similarity Search</span></a>
+</div>
+
+<div style="display:grid; grid-template-columns:360px 1fr; gap:20px; align-items:start;">
+
+    <!-- Left: Fetch Control Panel -->
+    <div>
+        <div class="card">
+            <div class="card-title">Gene Query</div>
+            <div class="form-group">
+                <label class="form-label">Gene Symbol</label>
+                <input type="text" id="fetch-gene" class="form-input"
+                       placeholder="e.g. TP53, BRCA1, EGFR"
+                       onkeydown="if(event.key==='Enter') executeFetch()">
+            </div>
+            <div>
+                <span class="text-muted text-sm" style="display:block; margin-bottom:6px;">Quick suggestions:</span>
+                <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                    <span class="quick-chip" onclick="setGene('TP53')">TP53</span>
+                    <span class="quick-chip" onclick="setGene('BRCA1')">BRCA1</span>
+                    <span class="quick-chip" onclick="setGene('EGFR')">EGFR</span>
+                    <span class="quick-chip" onclick="setGene('KRAS')">KRAS</span>
+                    <span class="quick-chip" onclick="setGene('MYC')">MYC</span>
+                    <span class="quick-chip" onclick="setGene('INS')">INS</span>
+                    <span class="quick-chip" onclick="setGene('GAPDH')">GAPDH</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Choose Website to Fetch From</div>
+
+            <label class="source-card active" id="card-ncbi" onclick="selectSource('ncbi')">
+                <input type="radio" name="fetch_source" value="ncbi" checked>
+                <div>
+                    <div class="source-title">
+                        <span>NCBI RefSeq</span>
+                        <span style="font-size:10px; background:#e1f0ff; color:var(--accent); padding:2px 6px; border-radius:4px;">Protein + DNA</span>
+                    </div>
+                    <div class="source-desc">Curated reference sequences directly from NCBI Entrez RefSeq.</div>
+                </div>
+            </label>
+
+            <label class="source-card" id="card-uniprot" onclick="selectSource('uniprot')">
+                <input type="radio" name="fetch_source" value="uniprot">
+                <div>
+                    <div class="source-title">
+                        <span>UniProt</span>
+                        <span style="font-size:10px; background:#eaf5ea; color:var(--green); padding:2px 6px; border-radius:4px;">Protein (Swiss-Prot)</span>
+                    </div>
+                    <div class="source-desc">Manually annotated and reviewed human protein isoforms.</div>
+                </div>
+            </label>
+
+            <label class="source-card" id="card-ensembl" onclick="selectSource('ensembl')">
+                <input type="radio" name="fetch_source" value="ensembl">
+                <div>
+                    <div class="source-title">
+                        <span>Ensembl</span>
+                        <span style="font-size:10px; background:#f4ebff; color:var(--purple); padding:2px 6px; border-radius:4px;">Genomic & Canonical</span>
+                    </div>
+                    <div class="source-desc">European Bioinformatics Institute (EMBL-EBI) canonical transcripts.</div>
+                </div>
+            </label>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Sequence Type</div>
+            <div class="toggle-group">
+                <label class="toggle-chip checked" id="chip-type-protein" onclick="selectSeqType('protein')">
+                    <input type="radio" name="seq_type" value="protein" checked>
+                    <span class="dot"></span> Protein (Amino Acid)
+                </label>
+                <label class="toggle-chip" id="chip-type-dna" onclick="selectSeqType('dna')">
+                    <input type="radio" name="seq_type" value="dna">
+                    <span class="dot"></span> DNA (mRNA / Nucleotide)
+                </label>
+            </div>
+            <div id="uniprot-dna-hint" class="text-muted text-sm mt-8 hidden" style="color:var(--orange);">
+                ℹ UniProt specializes in protein sequences. Switch to NCBI or Ensembl for DNA.
+            </div>
+        </div>
+
+        <button class="btn btn-primary" style="width:100%;" onclick="executeFetch()" id="fetch-btn">
+            📥 Fetch Sequence
+        </button>
+    </div>
+
+    <!-- Right: Fetched Sequence Viewer -->
+    <div>
+        <div id="fetch-empty" class="card" style="text-align:center; padding:64px 24px;">
+            <div style="font-size:52px; margin-bottom:18px">📥</div>
+            <div style="font-size:17px; font-weight:600; margin-bottom:8px; color:var(--text)">Fetch a Gene Sequence</div>
+            <div class="text-muted" style="font-size:13px; max-width:380px; margin:0 auto; line-height:1.6">
+                Pick a database website (NCBI, UniProt, or Ensembl), enter a gene symbol, and fetch.
+                You can review and copy the sequence before continuing to similarity search.
+            </div>
+        </div>
+
+        <div id="fetch-error-box" class="alert alert-error hidden"></div>
+
+        <div id="fetch-result-content" class="hidden">
+            <!-- Stats Row -->
+            <div class="stat-row" id="fetch-stats"></div>
+
+            <!-- Description Card -->
+            <div class="card" id="desc-card" style="margin-bottom:16px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+                    <div class="card-title" style="margin-bottom:0">Description & Header</div>
+                    <a id="desc-source-link" href="#" target="_blank" rel="noopener noreferrer"
+                       style="font-size:12px; color:var(--accent); text-decoration:none; font-weight:500; display:inline-flex; align-items:center; gap:4px;">
+                        🌐 View original entry on website ↗
+                    </a>
+                </div>
+                <div id="fetch-desc-text" style="font-size:13px; color:var(--text-mid); line-height:1.6;"></div>
+            </div>
+
+            <!-- Sequence Viewer Card -->
+            <div class="card">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <div class="card-title" style="margin-bottom:0">Sequence Viewer</div>
+                        <span id="char-count-badge" style="font-size:11px; font-family:var(--mono); color:var(--text-muted); background:var(--bg); border:1px solid var(--border-light); padding:2px 8px; border-radius:980px;"></span>
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <a id="btn-view-source" href="#" target="_blank" rel="noopener noreferrer"
+                           class="btn btn-ghost btn-sm"
+                           style="color:var(--accent); text-decoration:none; display:inline-flex; align-items:center; gap:5px;">
+                            🌐 View on Source ↗
+                        </a>
+                        <button class="btn btn-ghost btn-sm" onclick="copySequence()">
+                            📋 Copy Sequence
+                        </button>
+                        <button class="btn btn-ghost btn-sm" onclick="copyFasta()">
+                            📋 Copy FASTA
+                        </button>
+                    </div>
+                </div>
+
+                <div class="tab-bar" style="margin-bottom:12px;">
+                    <button class="tab-btn active" id="tab-view-raw" onclick="switchView('raw')">Plain Sequence</button>
+                    <button class="tab-btn" id="tab-view-fasta" onclick="switchView('fasta')">FASTA Format</button>
+                </div>
+
+                <div id="seq-view-raw" class="seq-view-box"></div>
+                <div id="seq-view-fasta" class="seq-view-box hidden"></div>
+            </div>
+
+            <!-- Next Step Card -->
+            <div class="card" style="background:linear-gradient(180deg, #fbfbfd 0%, #f4f6fa 100%); border:1px solid #d8e2f0;">
+                <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px;">
+                    <div>
+                        <div style="font-weight:600; font-size:15px; color:var(--text);">Step 2: Ready for Similarity Search?</div>
+                        <div class="text-muted text-sm" style="margin-top:4px;">
+                            Compare this sequence against 60 human genes in the database using BLOSUM62, K-mer, Edit Distance, and Motif similarity.
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="proceedToSearch()">
+                        🔍 Use in Similarity Search →
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Floating Copy Confirmation Toast -->
+<div class="copy-toast" id="copy-toast">
+    <span>✓</span> <span id="toast-msg">Copied to clipboard!</span>
+</div>
+
+<script>
+let currentSource = 'ncbi';
+let currentSeqType = 'protein';
+let fetchedData = null;
+let currentViewMode = 'raw';
+
+function setGene(symbol) {
+    document.getElementById('fetch-gene').value = symbol;
+    executeFetch();
+}
+
+function selectSource(source) {
+    currentSource = source;
+    ['ncbi', 'uniprot', 'ensembl'].forEach(s => {
+        const card = document.getElementById(`card-${s}`);
+        const active = s === source;
+        card.classList.toggle('active', active);
+        card.querySelector('input').checked = active;
+    });
+
+    const uniprotHint = document.getElementById('uniprot-dna-hint');
+    if (source === 'uniprot') {
+        if (currentSeqType === 'dna') {
+            selectSeqType('protein');
+        }
+        uniprotHint.classList.remove('hidden');
+    } else {
+        uniprotHint.classList.add('hidden');
+    }
+}
+
+function selectSeqType(type) {
+    if (currentSource === 'uniprot' && type === 'dna') {
+        alert('UniProt is a protein sequence database. Please select NCBI or Ensembl if you need DNA sequences.');
+        return;
+    }
+    currentSeqType = type;
+    document.getElementById('chip-type-protein').classList.toggle('checked', type === 'protein');
+    document.getElementById('chip-type-dna').classList.toggle('checked', type === 'dna');
+    document.getElementById('chip-type-protein').querySelector('input').checked = (type === 'protein');
+    document.getElementById('chip-type-dna').querySelector('input').checked = (type === 'dna');
+}
+
+function switchView(mode) {
+    currentViewMode = mode;
+    document.getElementById('tab-view-raw').classList.toggle('active', mode === 'raw');
+    document.getElementById('tab-view-fasta').classList.toggle('active', mode === 'fasta');
+    document.getElementById('seq-view-raw').classList.toggle('hidden', mode !== 'raw');
+    document.getElementById('seq-view-fasta').classList.toggle('hidden', mode !== 'fasta');
+}
+
+function showToast(msg) {
+    const toast = document.getElementById('copy-toast');
+    document.getElementById('toast-msg').textContent = msg;
+    toast.classList.add('visible');
+    setTimeout(() => {
+        toast.classList.remove('visible');
+    }, 2400);
+}
+
+async function copyTextToClipboard(text, successMsg) {
+    if (!text) return;
+    try {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
+        showToast(successMsg);
+    } catch (err) {
+        showToast('Failed to copy');
+    }
+}
+
+function copySequence() {
+    if (!fetchedData || !fetchedData.sequence) return;
+    copyTextToClipboard(fetchedData.sequence, '✓ Sequence copied to clipboard!');
+}
+
+function copyFasta() {
+    if (!fetchedData || !fetchedData.fasta) return;
+    copyTextToClipboard(fetchedData.fasta, '✓ FASTA format copied to clipboard!');
+}
+
+function proceedToSearch() {
+    if (!fetchedData || !fetchedData.sequence) return;
+    // Store in sessionStorage so search page can retrieve it seamlessly
+    sessionStorage.setItem('genesim_query_seq', fetchedData.sequence);
+    sessionStorage.setItem('genesim_query_symbol', fetchedData.symbol);
+    sessionStorage.setItem('genesim_query_source', fetchedData.source);
+    sessionStorage.setItem('genesim_query_type', fetchedData.seq_type);
+    sessionStorage.setItem('genesim_query_isoform', fetchedData.isoform_id);
+    sessionStorage.setItem('genesim_query_source_url', fetchedData.source_url || '');
+
+    // Redirect to Search page
+    window.location.href = '/?from=fetch';
+}
+
+async function executeFetch() {
+    const gene = document.getElementById('fetch-gene').value.trim().toUpperCase();
+    if (!gene) {
+        alert('Please enter a gene symbol.');
+        return;
+    }
+
+    const errorBox = document.getElementById('fetch-error-box');
+    const emptyState = document.getElementById('fetch-empty');
+    const resultContent = document.getElementById('fetch-result-content');
+    const fetchBtn = document.getElementById('fetch-btn');
+
+    errorBox.classList.add('hidden');
+    emptyState.classList.add('hidden');
+    resultContent.classList.add('hidden');
+    fetchBtn.disabled = true;
+
+    showDNA(`Fetching ${gene} from ${currentSource.toUpperCase()}...`, 'Retrieving sequence data');
+
+    try {
+        const resp = await fetch('/api/fetch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                gene_name: gene,
+                source: currentSource,
+                seq_type: currentSeqType
+            })
+        });
+
+        const data = await resp.json();
+        hideDNA();
+
+        if (!resp.ok) {
+            errorBox.textContent = `❌ ${data.error || 'Failed to fetch sequence.'}`;
+            errorBox.classList.remove('hidden');
+            return;
+        }
+
+        fetchedData = data;
+        renderFetchedResult(data);
+
+    } catch (e) {
+        hideDNA();
+        errorBox.textContent = `❌ Network error: ${e.message}`;
+        errorBox.classList.remove('hidden');
+    } finally {
+        fetchBtn.disabled = false;
+    }
+}
+
+function renderFetchedResult(data) {
+    const isDna = data.seq_type === 'dna';
+    const unit = isDna ? 'bp' : 'aa';
+    const typeLabel = isDna ? 'DNA (mRNA)' : 'Protein';
+    const sourceUrl = data.source_url || '#';
+
+    document.getElementById('fetch-stats').innerHTML = `
+        <div class="stat-chip">
+            <div class="stat-val gene-badge" style="font-size:18px;">${data.symbol}</div>
+            <div class="stat-label">Gene Symbol</div>
+        </div>
+        <div class="stat-chip">
+            <div class="stat-val text-mono text-sm" style="font-size:14px; margin-top:2px;">
+                ${data.source_url ? `
+                    <a href="${sourceUrl}" target="_blank" rel="noopener noreferrer"
+                       style="color:var(--accent); text-decoration:none;"
+                       title="Click to view original on ${data.source}">
+                        ${data.isoform_id} ↗
+                    </a>` : data.isoform_id}
+            </div>
+            <div class="stat-label">Accession / Isoform</div>
+        </div>
+        <div class="stat-chip">
+            <div class="stat-val" style="font-size:16px;">
+                ${data.source_url ? `
+                    <a href="${sourceUrl}" target="_blank" rel="noopener noreferrer"
+                       style="color:var(--accent); text-decoration:none;"
+                       title="Click to view original on ${data.source}">
+                        ${data.source} ↗
+                    </a>` : data.source}
+            </div>
+            <div class="stat-label">Source Database (Click to view)</div>
+        </div>
+        <div class="stat-chip">
+            <div class="stat-val" style="font-size:16px;">${typeLabel}</div>
+            <div class="stat-label">Type</div>
+        </div>
+        <div class="stat-chip">
+            <div class="stat-val text-mono" style="font-size:18px; color:var(--accent);">${data.length.toLocaleString()} <span style="font-size:12px; font-weight:normal;">${unit}</span></div>
+            <div class="stat-label">Length</div>
+        </div>
+    `;
+
+    document.getElementById('fetch-desc-text').textContent = data.description || `${data.symbol} (${data.source})`;
+    document.getElementById('char-count-badge').textContent = `${data.length.toLocaleString()} ${unit}`;
+
+    // Update view source buttons
+    const btnSource = document.getElementById('btn-view-source');
+    const linkDesc = document.getElementById('desc-source-link');
+    if (data.source_url) {
+        btnSource.href = data.source_url;
+        btnSource.innerHTML = `🌐 View on ${data.source} ↗`;
+        btnSource.classList.remove('hidden');
+
+        linkDesc.href = data.source_url;
+        linkDesc.innerHTML = `🌐 View original entry on ${data.source} ↗`;
+        linkDesc.classList.remove('hidden');
+    } else {
+        btnSource.classList.add('hidden');
+        linkDesc.classList.add('hidden');
+    }
+
+    // Plain sequence
+    document.getElementById('seq-view-raw').textContent = data.sequence;
+
+    // FASTA format
+    document.getElementById('seq-view-fasta').textContent = data.fasta;
+
+    document.getElementById('fetch-result-content').classList.remove('hidden');
+}
+</script>
+{% endblock %}
+

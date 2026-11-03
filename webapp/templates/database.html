@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title %}Database — GeneSim{% endblock %}
+{% block page_title %}Gene Database{% endblock %}
+{% block page_sub %}60 human genes — protein & DNA sequences from NCBI, UniProt, and Ensembl{% endblock %}
+
+{% block content %}
+
+<div class="stat-row">
+    <div class="stat-chip"><div class="stat-val" id="stat-genes">—</div><div class="stat-label">Genes</div></div>
+    <div class="stat-chip"><div class="stat-val" id="stat-proteins">—</div><div class="stat-label">Protein Isoforms</div></div>
+    <div class="stat-chip"><div class="stat-val" id="stat-dna">—</div><div class="stat-label">DNA Isoforms</div></div>
+    <div class="stat-chip"><div class="stat-val">3 Sources</div><div class="stat-label">NCBI · UniProt · Ensembl</div></div>
+</div>
+
+<div class="card" style="padding:14px 20px;">
+    <input type="text" id="db-search" class="form-input"
+           placeholder="🔍 Filter by gene symbol or description..."
+           oninput="filterGenes(this.value)">
+</div>
+
+<div class="card">
+    <div class="card-title">All Genes</div>
+    <div style="overflow-x:auto;">
+        <table class="data-table" id="gene-table">
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Organism</th>
+                    <th>Description</th>
+                    <th style="text-align:center">Protein</th>
+                    <th style="text-align:center">DNA</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="gene-tbody">
+                <tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-muted)">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Isoform detail panel -->
+<div class="card hidden" id="isoform-panel">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+        <div class="card-title" id="isoform-title" style="margin-bottom:0">Isoforms</div>
+        <button class="btn btn-ghost btn-sm" onclick="closePanel()">✕ Close</button>
+    </div>
+    <div id="isoform-description" class="text-muted text-sm" style="margin-bottom:16px; line-height:1.6; max-width:700px;"></div>
+    <div id="isoform-content"></div>
+</div>
+
+<!-- Sequence viewer modal -->
+<div id="seq-modal" style="
+    display:none; position:fixed; inset:0; z-index:200;
+    background:rgba(0,0,0,0.4); backdrop-filter:blur(4px);
+    align-items:center; justify-content:center;">
+    <div style="
+        background:var(--bg-white); border-radius:16px;
+        width:min(720px, 90vw); max-height:80vh;
+        display:flex; flex-direction:column;
+        box-shadow:var(--shadow-lg); overflow:hidden;">
+        <div style="padding:20px 24px; border-bottom:1px solid var(--border-light); display:flex; align-items:center; justify-content:space-between;">
+            <div>
+                <div style="font-weight:600; font-size:15px" id="seq-modal-title">Sequence</div>
+                <div class="text-muted text-sm" id="seq-modal-sub"></div>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+                <button class="btn btn-ghost btn-sm" onclick="copySequence()">📋 Copy</button>
+                <button class="btn btn-ghost btn-sm" onclick="closeSeqModal()">✕</button>
+            </div>
+        </div>
+        <div style="padding:20px 24px; overflow-y:auto; flex:1;">
+            <div id="seq-modal-body" class="code-block" style="font-size:12px; line-height:1.8; word-break:break-all; white-space:pre-wrap;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+let allGenes = [];
+let currentSeq = '';
+
+async function loadGenes() {
+    const resp = await fetch('/api/genes');
+    allGenes   = await resp.json();
+
+    document.getElementById('stat-genes').textContent    = allGenes.length;
+    document.getElementById('stat-proteins').textContent = allGenes.reduce((a,g) => a + g.protein_count, 0);
+    document.getElementById('stat-dna').textContent      = allGenes.reduce((a,g) => a + g.dna_count, 0);
+
+    renderGenes(allGenes);
+}
+
+function renderGenes(genes) {
+    const tbody = document.getElementById('gene-tbody');
+    if (!genes.length) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-muted)">No genes match your filter.</td></tr>`;
+        return;
+    }
+    tbody.innerHTML = genes.map(g => `
+        <tr>
+            <td><span class="gene-badge">${g.symbol}</span></td>
+            <td class="text-muted text-sm">${g.organism}</td>
+            <td class="text-sm" style="max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-mid)" title="${g.description||''}">${g.description||'—'}</td>
+            <td style="text-align:center"><span style="color:var(--accent); font-family:var(--mono); font-weight:600; font-size:13px">${g.protein_count}</span></td>
+            <td style="text-align:center"><span style="color:var(--purple); font-family:var(--mono); font-weight:600; font-size:13px">${g.dna_count}</span></td>
+            <td><button class="btn btn-ghost btn-sm" onclick="loadIsoforms('${g.symbol}')">View →</button></td>
+        </tr>
+    `).join('');
+}
+
+function filterGenes(q) {
+    const f = q.toLowerCase();
+    renderGenes(allGenes.filter(g =>
+        g.symbol.toLowerCase().includes(f) ||
+        (g.description||'').toLowerCase().includes(f)
+    ));
+}
+
+function closePanel() {
+    document.getElementById('isoform-panel').classList.add('hidden');
+}
+
+async function loadIsoforms(symbol) {
+    const panel = document.getElementById('isoform-panel');
+    document.getElementById('isoform-title').textContent = symbol + ' — Isoforms';
+    document.getElementById('isoform-description').textContent = '';
+    document.getElementById('isoform-content').innerHTML = `<div style="text-align:center;padding:24px;color:var(--text-muted)">Loading...</div>`;
+    panel.classList.remove('hidden');
+    panel.scrollIntoView({ behavior:'smooth', block:'start' });
+
+    const resp = await fetch('/api/gene/' + symbol);
+    const data = await resp.json();
+
+    if (data.error) {
+        document.getElementById('isoform-content').innerHTML = `<div class="alert alert-error">${data.error}</div>`;
+        return;
+    }
+
+    if (data.description) {
+        document.getElementById('isoform-description').textContent = data.description;
+    }
+
+    const protein = data.isoforms.filter(i => i.type === 'protein');
+    const dna     = data.isoforms.filter(i => i.type === 'dna');
+
+    document.getElementById('isoform-content').innerHTML = `
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+            <div>
+                <div class="card-title">Protein sequences (${protein.length})</div>
+                ${protein.map(iso => `
+                    <div style="background:var(--bg); border:1px solid var(--border-light); border-radius:10px; padding:12px 14px; margin-bottom:8px;">
+                        <div class="text-mono text-sm" style="color:var(--accent); font-weight:600">${iso.isoform_id}</div>
+                        <div style="display:flex; gap:16px; margin-top:6px; flex-wrap:wrap; align-items:center;">
+                            <span class="text-muted text-sm">Source: <strong style="color:var(--text-mid)">${iso.source}</strong></span>
+                            <span class="text-muted text-sm">Length: <strong style="color:var(--green)">${iso.length?.toLocaleString()||'—'} AA</strong></span>
+                            <button class="btn btn-ghost btn-sm" style="margin-left:auto"
+                                onclick="viewSequence('${symbol}','${iso.isoform_id}','protein','${iso.isoform_id} — ${iso.source} protein','${iso.length?.toLocaleString()||''} AA')">
+                                View sequence
+                            </button>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+            <div>
+                <div class="card-title">DNA sequences (${dna.length})</div>
+                ${dna.map(iso => `
+                    <div style="background:var(--bg); border:1px solid var(--border-light); border-radius:10px; padding:12px 14px; margin-bottom:8px;">
+                        <div class="text-mono text-sm" style="color:var(--purple); font-weight:600">${iso.isoform_id}</div>
+                        <div style="display:flex; gap:16px; margin-top:6px; flex-wrap:wrap; align-items:center;">
+                            <span class="text-muted text-sm">Source: <strong style="color:var(--text-mid)">${iso.source}</strong></span>
+                            <span class="text-muted text-sm">Length: <strong style="color:var(--purple)">${iso.length?.toLocaleString()||'—'} bp</strong></span>
+                            <button class="btn btn-ghost btn-sm" style="margin-left:auto"
+                                onclick="viewSequence('${symbol}','${iso.isoform_id}','dna','${iso.isoform_id} — ${iso.source} DNA','${iso.length?.toLocaleString()||''} bp')">
+                                View sequence
+                            </button>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
+async function viewSequence(symbol, isoformId, seqType, title, lengthLabel) {
+    document.getElementById('seq-modal-title').textContent = title;
+    document.getElementById('seq-modal-sub').textContent   = lengthLabel;
+    document.getElementById('seq-modal-body').textContent  = 'Loading...';
+    document.getElementById('seq-modal').style.display     = 'flex';
+
+    const url  = `/api/gene/${symbol}/sequence?isoform_id=${encodeURIComponent(isoformId)}&type=${seqType}`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+
+    if (data.error) {
+        document.getElementById('seq-modal-body').textContent = 'Error: ' + data.error;
+        return;
+    }
+
+    // Format sequence in 60-char lines like FASTA
+    const seq      = data.sequence;
+    const header   = `>${isoformId} | ${symbol} | ${seqType} | ${seq.length} ${seqType === 'protein' ? 'AA' : 'bp'}`;
+    const lines    = [];
+    for (let i = 0; i < seq.length; i += 60) {
+        lines.push(seq.slice(i, i + 60));
+    }
+    currentSeq = header + '\n' + lines.join('\n');
+    document.getElementById('seq-modal-body').textContent = currentSeq;
+}
+
+function closeSeqModal() {
+    document.getElementById('seq-modal').style.display = 'none';
+    currentSeq = '';
+}
+
+function copySequence() {
+    if (!currentSeq) return;
+    navigator.clipboard.writeText(currentSeq).then(() => {
+        const btn = document.querySelector('#seq-modal .btn-ghost');
+        btn.textContent = '✅ Copied!';
+        setTimeout(() => btn.textContent = '📋 Copy', 1500);
+    });
+}
+
+// Close modal on background click
+document.getElementById('seq-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeSeqModal();
+});
+
+loadGenes();
+</script>
+{% endblock %}

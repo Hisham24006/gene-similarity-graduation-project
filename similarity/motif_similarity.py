@@ -5,10 +5,10 @@ Computes gene similarity based on shared transcription factor binding motifs
 using JASPAR motif profiles via pyJASPAR and Biopython motif scanning.
 
 Pipeline:
-    1. Load all human TF motifs from JASPAR via pyJASPAR
-    2. Fetch promoter region (1000 bp upstream) from Ensembl for each gene
-    3. Scan promoter against all JASPAR motifs using Biopython PSSMs
-    4. Compare two genes by their shared TF binding site sets (Jaccard similarity)
+    1. Load all human TF motifs from JASPAR via pyJASPAR.
+    2. Fetch promoter region (1000 bp upstream) from Ensembl for each gene.
+    3. Scan promoter against all JASPAR motifs using Biopython PSSMs.
+    4. Compare two genes by their shared TF binding site sets (Jaccard similarity).
 
 Functions:
     load_jaspar_motifs()                 -> list of Biopython motif objects
@@ -19,31 +19,20 @@ Functions:
 """
 
 import os
-import ssl
 import time
 import json
 import requests
 from pyjaspar import jaspardb
 from Bio.Seq import Seq
 
-# -----------------------------------------------------------------------
-# SSL fix
-# -----------------------------------------------------------------------
-if not os.environ.get('PYTHONHTTPSVERIFY', '') and getattr(ssl, '_create_unverified_context', None):
-    ssl._create_default_https_context = ssl._create_unverified_context
-
-# -----------------------------------------------------------------------
-# Configuration
-# -----------------------------------------------------------------------
-
-PROMOTER_BP              = 1000   # bp upstream of TSS to fetch
-PSEUDOCOUNT              = 0.5    # avoids log(0) in PSSM
-SCORE_THRESHOLD_FRACTION = 0.80   # hit must score >= 80% of max possible
-
-# Cache file paths
-CACHE_DIR      = os.path.join(os.path.dirname(__file__), '..', 'data')
-PROMOTER_CACHE = os.path.join(CACHE_DIR, 'promoter_cache.json')
-TF_CACHE       = os.path.join(CACHE_DIR, 'tf_cache.json')
+from config import (
+    PROMOTER_CACHE_PATH as PROMOTER_CACHE,
+    TF_CACHE_PATH as TF_CACHE,
+    DATA_DIR as CACHE_DIR,
+    PROMOTER_BP,
+    PSEUDOCOUNT,
+    SCORE_THRESHOLD_FRACTION
+)
 
 
 # -----------------------------------------------------------------------
@@ -68,7 +57,7 @@ def load_jaspar_motifs():
         try:
             pssm = m.counts.normalize(pseudocounts=PSEUDOCOUNT).log_odds()
 
-            # Max possible score = best base at each position
+            # Max possible score = best base at each position.
             max_score = sum(
                 max(pssm[base][i] for base in "ACGT")
                 for i in range(m.length)
@@ -125,7 +114,7 @@ def fetch_promoter(gene_symbol):
         if not chrom or not tss:
             return None
 
-        # Step 2: fetch upstream sequence
+        # Step 2: fetch upstream sequence.
         if strand == 1:
             seq_start = max(1, tss - PROMOTER_BP)
             seq_end   = tss

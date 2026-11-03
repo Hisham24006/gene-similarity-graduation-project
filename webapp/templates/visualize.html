@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Visualizations — GeneSim{% endblock %}
+{% block page_title %}Visualizations{% endblock %}
+{% block page_sub %}Charts generated from your last similarity search and benchmarks{% endblock %}
+
+{% block content %}
+
+{% if not charts %}
+<div class="card" style="text-align:center; padding:64px 24px;">
+    <div style="font-size:52px; margin-bottom:18px">📊</div>
+    <div style="font-size:17px; font-weight:600; margin-bottom:8px">No charts yet</div>
+    <div class="text-muted" style="font-size:13px; margin-bottom:24px; line-height:1.6">
+        Run a similarity search first to generate bar charts and heatmaps.
+    </div>
+    <a href="/" class="btn btn-primary">Go to Search →</a>
+</div>
+
+{% else %}
+
+{% if charts.bar %}
+<div class="card">
+    <div class="card-title">Top Results — All Metrics</div>
+    <div class="text-muted text-sm" style="margin-bottom:16px; line-height:1.6">
+        Grouped bar chart showing BLOSUM62, K-mer, Edit distance, and Motif scores for the top matches from your last search.
+    </div>
+    <img src="data:image/png;base64,{{ charts.bar }}" style="width:100%; border-radius:8px; border:1px solid var(--border-light);">
+</div>
+{% endif %}
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+    {% if charts.kmer %}
+    <div class="card">
+        <div class="card-title">K-mer Similarity Heatmap</div>
+        <div class="text-muted text-sm" style="margin-bottom:12px">60×60 matrix — Jaccard similarity of shared 3-mers between all genes.</div>
+        <img src="data:image/png;base64,{{ charts.kmer }}" style="width:100%; border-radius:8px; border:1px solid var(--border-light);">
+    </div>
+    {% endif %}
+
+    {% if charts.edit %}
+    <div class="card">
+        <div class="card-title">Edit Distance Heatmap</div>
+        <div class="text-muted text-sm" style="margin-bottom:12px">60×60 matrix — normalized Levenshtein distance similarity between all genes.</div>
+        <img src="data:image/png;base64,{{ charts.edit }}" style="width:100%; border-radius:8px; border:1px solid var(--border-light);">
+    </div>
+    {% endif %}
+</div>
+
+{% if charts.motif %}
+<div class="card">
+    <div class="card-title">Motif (JASPAR) Similarity Heatmap</div>
+    <div class="text-muted text-sm" style="margin-bottom:12px; line-height:1.6">
+        Jaccard similarity of shared transcription factor binding sites in gene promoter regions.
+        This reveals <strong>functional similarity</strong> beyond what sequence alone captures — genes sharing the same regulatory programs score high here even if their sequences differ.
+    </div>
+    <img src="data:image/png;base64,{{ charts.motif }}" style="width:100%; border-radius:8px; border:1px solid var(--border-light);">
+</div>
+{% endif %}
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+    {% if charts.speed %}
+    <div class="card">
+        <div class="card-title">Benchmark — Speed per Comparison</div>
+        <div class="text-muted text-sm" style="margin-bottom:12px">Log-scale bar chart. K-mer and Motif are orders of magnitude faster than BLOSUM62.</div>
+        <img src="data:image/png;base64,{{ charts.speed }}" style="width:100%; border-radius:8px; border:1px solid var(--border-light);">
+    </div>
+    {% endif %}
+
+    {% if charts.agreement %}
+    <div class="card">
+        <div class="card-title">Benchmark — Agreement vs BLOSUM62</div>
+        <div class="text-muted text-sm" style="margin-bottom:12px">Pearson correlation of each metric against BLOSUM62 across 50 random gene pairs.</div>
+        <img src="data:image/png;base64,{{ charts.agreement }}" style="width:100%; border-radius:8px; border:1px solid var(--border-light);">
+    </div>
+    {% endif %}
+</div>
+
+{% endif %}
+
+{% endblock %}
