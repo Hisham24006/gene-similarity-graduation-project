@@ -107,7 +107,7 @@ if __name__ == "__main__":
             query_seq,
             all_seqs,
             k=KMER_K,
-            top_n=20,
+            top_n=80,
             index=kmer_index
         )
 

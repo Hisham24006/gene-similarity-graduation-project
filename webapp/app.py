@@ -52,6 +52,7 @@ from fetcher import (
     fetch_from_ensembl
 )
 from visualizer import plot_bar_chart, plot_heatmap
+from kmer_index import build_index_from_database, get_candidate_sequences
 
 app = Flask(__name__)
 
@@ -282,6 +283,19 @@ def api_search():
     if not all_seqs:
         return jsonify({'error': f'No {actual_mode} sequences found in database.'}), 400
 
+    # Apply k-mer candidate filtering to protein searches only
+    candidate_seqs = all_seqs
+
+    if actual_mode == 'protein':
+        kmer_index = build_index_from_database(all_seqs, k=KMER_K)
+        candidate_seqs = get_candidate_sequences(
+            query_seq,
+            all_seqs,
+            k=KMER_K,
+            top_n=80,
+            index=kmer_index
+        )
+
     # ── Motif TF sets ──
     promoter_tfs = {}
     query_tfs = set()
@@ -293,7 +307,7 @@ def api_search():
 
     # ── Run metrics ──
     results = []
-    for symbol, iso_id, local_seq in all_seqs:
+    for symbol, iso_id, local_seq in candidate_seqs:
         row = {'gene': symbol, 'isoform': iso_id, 'scores': {}, 'average': 0.0}
         total = 0
         count = 0
