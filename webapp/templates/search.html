@@ -1,22 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Search — GeneSim{% endblock %}
 {% block page_title %}Similarity Search{% endblock %}
-{% block page_sub %}Step 2 of 2 · Compare a sequence against 60 human genes using multiple metrics{% endblock %}
+{% block page_sub %}Compare a sequence against 60 human genes using multiple metrics{% endblock %}
 
 {% block content %}
-
-<!-- Workflow step indicator -->
-<div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
-    <a href="/fetch" style="text-decoration:none;">
-        <span style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:980px; font-size:11px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase; background:var(--bg); color:var(--text-muted); border:1px solid var(--border-light); cursor:pointer;">
-            Step 1: Fetch Sequence
-        </span>
-    </a>
-    <span style="color:var(--text-muted); font-size:12px;">→</span>
-    <span style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:980px; font-size:11px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase; background:var(--accent-light); color:var(--accent); border:1px solid #c8ddf8;">
-        Step 2: Similarity Search
-    </span>
-</div>
 
 <div style="display:grid; grid-template-columns:360px 1fr; gap:20px; align-items:start;">
 
@@ -58,21 +45,24 @@
                     <input type="checkbox" id="metric-blosum" checked onchange="toggleChip(this,'chip-blosum')">
                     <span class="dot"></span> BLOSUM62 / DNA Align
                 </label>
-                <label class="toggle-chip checked" id="chip-kmer">
-                    <input type="checkbox" id="metric-kmer" checked onchange="toggleChip(this,'chip-kmer')">
+                <label class="toggle-chip" id="chip-kmer">
+                    <input type="checkbox" id="metric-kmer" onchange="toggleChip(this,'chip-kmer')">
                     <span class="dot"></span> K-mer
                 </label>
-                <label class="toggle-chip checked" id="chip-edit">
-                    <input type="checkbox" id="metric-edit" checked onchange="toggleChip(this,'chip-edit')">
+                <label class="toggle-chip" id="chip-edit">
+                    <input type="checkbox" id="metric-edit" onchange="toggleChip(this,'chip-edit')">
                     <span class="dot"></span> Edit Distance
                 </label>
-                <label class="toggle-chip checked" id="chip-motif">
-                    <input type="checkbox" id="metric-motif" checked onchange="toggleChip(this,'chip-motif')">
+                <label class="toggle-chip" id="chip-motif">
+                    <input type="checkbox" id="metric-motif" onchange="toggleChip(this,'chip-motif')">
                     <span class="dot"></span> Motif (JASPAR)
                 </label>
             </div>
             <div class="text-muted text-sm mt-8">
                 ⚠ Alignment is slower on long sequences. Motif uses cached TF sets.
+            </div>
+            <div id="motif-warning" class="alert alert-warning hidden" style="padding:8px 12px; font-size:12px; margin-top:10px; line-height:1.4;">
+                ⚠ Motif scores need a known gene symbol. For pasted or fetched sequences without a gene-symbol header (for example <span class="text-mono">&gt;TP53</span>), the motif score will be 0 for every result.
             </div>
         </div>
 
@@ -84,6 +74,18 @@
                 </label>
                 <input type="range" id="top-n" min="5" max="30" value="10"
                        oninput="document.getElementById('top-n-val').textContent=this.value">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="rank-by">Rank results by</label>
+                <select id="rank-by" class="form-input">
+                    <option value="blosum" selected>Alignment (BLOSUM62 / DNA)</option>
+                    <option value="kmer">K-mer</option>
+                    <option value="edit">Edit Distance</option>
+                    <option value="motif">Motif (JASPAR)</option>
+                </select>
+                <div class="text-muted text-sm mt-8">
+                    If the chosen metric is not running, the first selected metric is used.
+                </div>
             </div>
         </div>
 
@@ -159,6 +161,12 @@ let activeMetrics = [];
 
 function toggleChip(cb, id) {
     document.getElementById(id).classList.toggle('checked', cb.checked);
+    updateMotifWarning();
+}
+
+function updateMotifWarning() {
+    const on = document.getElementById('metric-motif').checked;
+    document.getElementById('motif-warning').classList.toggle('hidden', !on);
 }
 
 function getSelectedMetrics() {
@@ -232,7 +240,7 @@ function onSeqInput() {
     }
 }
 
-// Check if preloaded from Step 1 (Fetch page)
+// Check if a sequence was preloaded from the Fetch page
 function checkPreloadedSeq() {
     const storedSeq = sessionStorage.getItem('genesim_query_seq');
     if (storedSeq) {
@@ -262,7 +270,8 @@ async function runSearch() {
         return;
     }
 
-    const body = { input_type: 'sequence', sequence: seq, metrics, top_n: topN };
+    const sortBy = document.getElementById('rank-by').value;
+    const body = { input_type: 'sequence', sequence: seq, metrics, top_n: topN, sort_by: sortBy };
 
     showDNA('Running similarity search...', 'Comparing against database isoforms');
     document.getElementById('search-btn').disabled = true;
@@ -322,7 +331,6 @@ function renderResults(data, metrics) {
             <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:14px;">
                 <div><div class="text-muted text-sm">Gene</div><div class="gene-badge" style="font-size:18px">${bm.gene}</div></div>
                 <div><div class="text-muted text-sm">Isoform</div><div class="text-mono text-sm" style="margin-top:2px">${bm.isoform}</div></div>
-                <div><div class="text-muted text-sm">Average Score</div><div style="font-size:18px;font-weight:700;color:var(--accent);font-family:var(--mono)">${bm.average.toFixed(4)}</div></div>
             </div>
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
                 ${Object.entries(bm.scores).map(([k,v]) => `
@@ -353,7 +361,6 @@ function renderTable(results, metrics) {
         <th>Gene</th>
         <th>Isoform</th>
         ${metrics.map(m => `<th>${METRIC_LABELS[m]}</th>`).join('')}
-        <th>Average</th>
     </tr>`;
 
     const tbody = document.getElementById('results-tbody');
@@ -381,7 +388,6 @@ function renderTable(results, metrics) {
                     </div>
                 </td>`;
             }).join('')}
-            <td><span class="text-mono" style="color:var(--accent);font-weight:700">${r.average.toFixed(4)}</span></td>
         </tr>
     `).join('');
 }
@@ -462,7 +468,7 @@ async function clearRecent() {
     loadRecent();
 }
 
-// Check pre-loaded sequence from Step 1 (Fetch page) and recent searches
+// Check pre-loaded sequence from the Fetch page and recent searches
 checkPreloadedSeq();
 loadRecent();
 </script>

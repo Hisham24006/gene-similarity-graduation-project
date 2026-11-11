@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Fetch Sequence — GeneSim{% endblock %}
 {% block page_title %}Fetch Sequence{% endblock %}
-{% block page_sub %}Step 1 of 2 · Fetch DNA or protein sequences from NCBI, UniProt, or Ensembl{% endblock %}
+{% block page_sub %}Fetch DNA or protein sequences from NCBI, UniProt, or Ensembl{% endblock %}
 
 {% block head %}
 <style>
@@ -42,27 +42,6 @@
         color: var(--text-muted);
         margin-top: 2px;
         line-height: 1.4;
-    }
-    .step-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 10px;
-        border-radius: 980px;
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-    }
-    .step-badge-active {
-        background: var(--accent-light);
-        color: var(--accent);
-        border: 1px solid #c8ddf8;
-    }
-    .step-badge-next {
-        background: var(--bg);
-        color: var(--text-muted);
-        border: 1px solid var(--border-light);
     }
     .quick-chip {
         display: inline-block;
@@ -126,13 +105,6 @@
 {% endblock %}
 
 {% block content %}
-
-<!-- Workflow step indicator -->
-<div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
-    <span class="step-badge step-badge-active">Step 1: Fetch & Inspect</span>
-    <span style="color:var(--text-muted); font-size:12px;">→</span>
-    <a href="/" style="text-decoration:none;"><span class="step-badge step-badge-next">Step 2: Similarity Search</span></a>
-</div>
 
 <div style="display:grid; grid-template-columns:360px 1fr; gap:20px; align-items:start;">
 
@@ -279,11 +251,11 @@
                 <div id="seq-view-fasta" class="seq-view-box hidden"></div>
             </div>
 
-            <!-- Next Step Card -->
+            <!-- Continue to search card -->
             <div class="card" style="background:linear-gradient(180deg, #fbfbfd 0%, #f4f6fa 100%); border:1px solid #d8e2f0;">
                 <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px;">
                     <div>
-                        <div style="font-weight:600; font-size:15px; color:var(--text);">Step 2: Ready for Similarity Search?</div>
+                        <div style="font-weight:600; font-size:15px; color:var(--text);">Ready for Similarity Search?</div>
                         <div class="text-muted text-sm" style="margin-top:4px;">
                             Compare this sequence against 60 human genes in the database using BLOSUM62, K-mer, Edit Distance, and Motif similarity.
                         </div>
