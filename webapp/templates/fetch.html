@@ -113,10 +113,14 @@
         <div class="card">
             <div class="card-title">Gene Query</div>
             <div class="form-group">
-                <label class="form-label">Gene Symbol</label>
+                <label class="form-label" for="fetch-gene">Gene symbol or accession number</label>
                 <input type="text" id="fetch-gene" class="form-input"
-                       placeholder="e.g. TP53, BRCA1, EGFR"
+                       placeholder="e.g. TP53, NP_000537.3, P04637"
+                       oninput="onQueryInput()"
                        onkeydown="if(event.key==='Enter') executeFetch()">
+                <div id="query-kind-hint" class="text-muted text-sm mt-8">
+                    Accepts RefSeq (NP_, NM_, XP_, XM_), UniProt (P04637, P04637-2) and Ensembl (ENSP, ENST, ENSG) IDs.
+                </div>
             </div>
             <div>
                 <span class="text-muted text-sm" style="display:block; margin-bottom:6px;">Quick suggestions:</span>
@@ -128,6 +132,13 @@
                     <span class="quick-chip" onclick="setGene('MYC')">MYC</span>
                     <span class="quick-chip" onclick="setGene('INS')">INS</span>
                     <span class="quick-chip" onclick="setGene('GAPDH')">GAPDH</span>
+                </div>
+                <span class="text-muted text-sm" style="display:block; margin:10px 0 6px;">Accession examples:</span>
+                <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                    <span class="quick-chip" onclick="setGene('NP_000537.3')" title="RefSeq protein: TP53">NP_000537.3</span>
+                    <span class="quick-chip" onclick="setGene('NM_004985.5')" title="RefSeq mRNA: KRAS">NM_004985.5</span>
+                    <span class="quick-chip" onclick="setGene('P04637-2')" title="UniProt isoform: TP53 isoform 2">P04637-2</span>
+                    <span class="quick-chip" onclick="setGene('ENST00000269305')" title="Ensembl transcript: TP53-201">ENST00000269305</span>
                 </div>
             </div>
         </div>
@@ -197,7 +208,7 @@
             <div style="font-size:52px; margin-bottom:18px">📥</div>
             <div style="font-size:17px; font-weight:600; margin-bottom:8px; color:var(--text)">Fetch a Gene Sequence</div>
             <div class="text-muted" style="font-size:13px; max-width:380px; margin:0 auto; line-height:1.6">
-                Pick a database website (NCBI, UniProt, or Ensembl), enter a gene symbol, and fetch.
+                Enter a gene symbol and pick a database website (NCBI, UniProt, or Ensembl), or enter an accession number to fetch that exact record.
                 You can review and copy the sequence before continuing to similarity search.
             </div>
         </div>
@@ -205,6 +216,9 @@
         <div id="fetch-error-box" class="alert alert-error hidden"></div>
 
         <div id="fetch-result-content" class="hidden">
+            <!-- Note when an accession decided the database/type, or a non-human record -->
+            <div id="fetch-note" class="alert alert-info hidden" style="padding:8px 12px; font-size:12px; margin-bottom:12px; line-height:1.4;"></div>
+
             <!-- Stats Row -->
             <div class="stat-row" id="fetch-stats"></div>
 
@@ -282,7 +296,41 @@ let currentViewMode = 'raw';
 
 function setGene(symbol) {
     document.getElementById('fetch-gene').value = symbol;
+    onQueryInput();
     executeFetch();
+}
+
+// Mirrors ACCESSION_PATTERNS in similarity/fetcher.py (the server decides).
+const UNIPROT_RE = '(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})(?:-\\d+)?';
+const ACCESSION_KINDS = [
+    [/^(?:NP|XP)_\d+(?:\.\d+)?$/,       'RefSeq protein',     'NCBI',    'protein'],
+    [/^(?:NM|XM|NR|XR)_\d+(?:\.\d+)?$/, 'RefSeq RNA',         'NCBI',    'DNA'],
+    [/^ENSP\d{11}(?:\.\d+)?$/,          'Ensembl protein',    'Ensembl', 'protein'],
+    [/^ENST\d{11}(?:\.\d+)?$/,          'Ensembl transcript', 'Ensembl', 'DNA (cDNA)'],
+    [/^ENSG\d{11}(?:\.\d+)?$/,          'Ensembl gene',       'Ensembl', null],
+    [new RegExp(`^${UNIPROT_RE}$`),     'UniProt',            'UniProt', 'protein'],
+];
+
+function detectAccession(text) {
+    const q = text.trim().toUpperCase();
+    for (const [re, kind, source, type] of ACCESSION_KINDS) {
+        if (re.test(q)) return { kind, source, type };
+    }
+    return null;
+}
+
+function onQueryInput() {
+    const hint = document.getElementById('query-kind-hint');
+    const q = document.getElementById('fetch-gene').value.trim();
+    const acc = q ? detectAccession(q) : null;
+    if (acc) {
+        const how = acc.type
+            ? `fetched from ${acc.source} as ${acc.type}; the website and type below are ignored.`
+            : `fetched from ${acc.source} using the sequence type below; the website choice is ignored.`;
+        hint.innerHTML = `<span style="color:var(--accent); font-weight:600;">${acc.kind} accession</span>: ${how}`;
+    } else {
+        hint.textContent = 'Accepts RefSeq (NP_, NM_, XP_, XM_), UniProt (P04637, P04637-2) and Ensembl (ENSP, ENST, ENSG) IDs.';
+    }
 }
 
 function selectSource(source) {
@@ -382,9 +430,10 @@ function proceedToSearch() {
 async function executeFetch() {
     const gene = document.getElementById('fetch-gene').value.trim().toUpperCase();
     if (!gene) {
-        alert('Please enter a gene symbol.');
+        alert('Please enter a gene symbol or an accession number.');
         return;
     }
+    const accession = detectAccession(gene);
 
     const errorBox = document.getElementById('fetch-error-box');
     const emptyState = document.getElementById('fetch-empty');
@@ -396,14 +445,15 @@ async function executeFetch() {
     resultContent.classList.add('hidden');
     fetchBtn.disabled = true;
 
-    showDNA(`Fetching ${gene} from ${currentSource.toUpperCase()}...`, 'Retrieving sequence data');
+    const fromLabel = accession ? accession.source : currentSource.toUpperCase();
+    showDNA(`Fetching ${gene} from ${fromLabel}...`, 'Retrieving sequence data');
 
     try {
         const resp = await fetch('/api/fetch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                gene_name: gene,
+                query: gene,
                 source: currentSource,
                 seq_type: currentSeqType
             })
@@ -431,6 +481,14 @@ async function executeFetch() {
 }
 
 function renderFetchedResult(data) {
+    // An accession may have decided the website and type: keep the controls in sync
+    if (data.source_key && data.source_key !== currentSource) selectSource(data.source_key);
+    if (data.seq_type && data.seq_type !== currentSeqType) selectSeqType(data.seq_type);
+
+    const note = document.getElementById('fetch-note');
+    note.textContent = data.note ? `ℹ ${data.note}` : '';
+    note.classList.toggle('hidden', !data.note);
+
     const isDna = data.seq_type === 'dna';
     const unit = isDna ? 'bp' : 'aa';
     const typeLabel = isDna ? 'DNA (mRNA)' : 'Protein';

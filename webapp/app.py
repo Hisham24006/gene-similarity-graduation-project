@@ -53,7 +53,9 @@ from motif_similarity import (
 from fetcher import (
     fetch_from_ncbi,
     fetch_from_uniprot,
-    fetch_from_ensembl
+    fetch_from_ensembl,
+    fetch_by_accession,
+    detect_accession
 )
 from visualizer import plot_bar_chart, plot_heatmap
 from kmer_index import build_index_from_database, get_candidate_sequences
@@ -210,27 +212,58 @@ def fetch_page():
 @app.route('/api/fetch', methods=['POST'])
 def api_fetch():
     data = request.json or {}
-    gene_name = data.get('gene_name', '').strip().upper()
+    # 'query' is a gene symbol or an accession; 'gene_name' is the older key
+    gene_name = (data.get('query') or data.get('gene_name') or '').strip().upper()
     source = data.get('source', 'ncbi').strip().lower()
     seq_type = data.get('seq_type', 'protein').strip().lower()
+    source_names = {'ncbi': 'NCBI RefSeq', 'uniprot': 'UniProt', 'ensembl': 'Ensembl'}
 
     if not gene_name:
-        return jsonify({'error': 'Please enter a gene symbol (e.g. TP53, BRCA1, EGFR).'}), 400
-
-    if source == 'ncbi':
-        iso_id, seq, desc, error = fetch_from_ncbi(gene_name, seq_type)
-        source_name = 'NCBI RefSeq'
-    elif source == 'uniprot':
-        iso_id, seq, desc, error = fetch_from_uniprot(gene_name, seq_type)
-        source_name = 'UniProt'
-    elif source == 'ensembl':
-        iso_id, seq, desc, error = fetch_from_ensembl(gene_name, seq_type)
-        source_name = 'Ensembl'
-    else:
+        return jsonify({'error': 'Please enter a gene symbol (e.g. TP53) or an accession number (e.g. NP_000537.3, P04637).'}), 400
+    if source not in source_names:
         return jsonify({'error': f"Unknown website '{source}'. Please choose NCBI, UniProt, or Ensembl."}), 400
 
-    if error:
-        return jsonify({'error': error}), 400
+    symbol = gene_name
+    query_kind = 'symbol'
+    accession_kind = None
+    organism = None
+    note = None
+
+    accession = detect_accession(gene_name)
+    if accession:
+        # An accession names one exact record: its format decides the
+        # database and (except for gene IDs) the sequence type.
+        result = fetch_by_accession(gene_name, seq_type)
+        not_found = result['error'] and 'not found' in result['error']
+        if result['error'] and not (accession['source'] == 'uniprot' and not_found):
+            return jsonify({'error': result['error']}), 400
+        if not result['error']:
+            query_kind = 'accession'
+            accession_kind = result['kind']
+            iso_id, seq, desc = result['isoform_id'], result['sequence'], result['description']
+            symbol = result['symbol'] or iso_id
+            organism = result['organism']
+            changed = []
+            if result['source'] != source:
+                changed.append(f"from {source_names[result['source']]}")
+            if result['seq_type'] != seq_type:
+                changed.append('as ' + ('DNA' if result['seq_type'] == 'dna' else 'protein'))
+            if changed:
+                article = 'an' if result['kind'][0] in 'AEIOU' else 'a'
+                note = f"Detected {article} {result['kind']} accession, so it was fetched {' '.join(changed)}."
+            source, seq_type = result['source'], result['seq_type']
+        # else: looked like a UniProt accession but is not one; try it as a symbol
+
+    if query_kind == 'symbol':
+        fetchers = {'ncbi': fetch_from_ncbi, 'uniprot': fetch_from_uniprot, 'ensembl': fetch_from_ensembl}
+        iso_id, seq, desc, error = fetchers[source](gene_name, seq_type)
+        if error:
+            return jsonify({'error': error}), 400
+
+    source_name = source_names[source]
+    if organism and organism.lower() != 'homo sapiens':
+        warning = f"This record is from {organism}; the database contains human genes only."
+        note = f"{note} {warning}" if note else warning
 
     fasta_header = f">{iso_id} {desc or (gene_name + ' ' + seq_type)}"
     fasta_str = f"{fasta_header}\n{seq}"
@@ -248,14 +281,19 @@ def api_fetch():
         source_url = f"https://www.ensembl.org/id/{iso_id}"
 
     return jsonify({
-        'symbol': gene_name,
+        'symbol': symbol,
+        'query': gene_name,
+        'query_kind': query_kind,          # 'symbol' or 'accession'
+        'accession_kind': accession_kind,  # e.g. 'RefSeq protein'
+        'organism': organism,
+        'note': note,
         'source': source_name,
         'source_key': source,
         'seq_type': seq_type,
         'isoform_id': iso_id,
         'sequence': seq,
         'length': len(seq),
-        'description': desc or f"{gene_name} {seq_type} sequence from {source_name}",
+        'description': desc or f"{symbol} {seq_type} sequence from {source_name}",
         'fasta': fasta_str,
         'source_url': source_url
     })

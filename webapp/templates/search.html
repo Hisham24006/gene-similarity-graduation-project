@@ -395,6 +395,16 @@ function onSeqInput() {
         lenBadge.textContent = '';
         return;
     }
+
+    // A single word that is not a valid sequence is probably an accession
+    // number or gene symbol (e.g. NP_000537.3, P04637, TP53): offer to fetch it.
+    const validForTab = currentMode === 'dna' ? VALID_NUC.test(seq) : VALID_AA.test(seq);
+    if (!raw.startsWith('>') && /^[A-Za-z0-9_.\-]{2,25}$/.test(raw) && (/[0-9_.\-]/.test(raw) || !validForTab)) {
+        const id = raw.toUpperCase();
+        typeLabel.innerHTML = `This looks like an ID, not a sequence. <a href="#" onclick="loadById('${id}', currentMode); return false;" style="color:var(--accent); font-weight:600; text-decoration:none;">Fetch ${escapeHtml(id)} →</a>`;
+        lenBadge.textContent = '';
+        return;
+    }
     lenBadge.textContent = `${seq.length.toLocaleString()} ${cfg.unit}`;
 
     const isNuc     = VALID_NUC.test(seq);
@@ -643,7 +653,47 @@ async function loadRecent() {
     }).join('');
 }
 
-// Re-run a recent search in the tab it came from by fetching the gene again
+// Fetch a gene symbol or accession number into the search box. Accessions
+// decide their own type, so the sequence lands in the matching tab.
+// Returns true on success.
+async function loadById(id, mode, { quietErrors = false } = {}) {
+    showDNA(`Loading ${id}...`, 'Retrieving sequence');
+    try {
+        const resp = await fetch('/api/fetch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: id, source: 'ncbi', seq_type: mode })
+        });
+        const data = await resp.json();
+        hideDNA();
+        if (!resp.ok || !data.sequence) {
+            const msg = `Could not fetch "${id}": ${data.error || 'no sequence returned'}`;
+            if (quietErrors) return msg;
+            showError(msg);
+            return false;
+        }
+        const target = data.seq_type === 'dna' ? 'dna' : 'protein';
+        if (target !== currentMode) {
+            // Leave the typed ID behind rather than copying it into the other tab
+            document.getElementById('gene-seq').value = '';
+            drafts[currentMode] = { text: '', banner: '' };
+            switchMode(target);
+        }
+        document.getElementById('gene-seq').value = `>${data.symbol} ${data.isoform_id}\n${data.sequence}`;
+        const viewLink = data.source_url ? ` · <a href="${escapeHtml(data.source_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent); font-weight:600; text-decoration:none;">View source ↗</a>` : '';
+        const note = data.note ? `<br>ℹ ${escapeHtml(data.note)}` : '';
+        setBanner(`✓ Loaded ${MODES[target].name.toLowerCase()} sequence for <strong>${escapeHtml(data.symbol)}</strong> (${escapeHtml(data.isoform_id)} · ${escapeHtml(data.source)}${viewLink}).${note}`);
+        onSeqInput();
+        return true;
+    } catch (e) {
+        hideDNA();
+        if (quietErrors) return 'Network error: ' + e.message;
+        showError('Network error: ' + e.message);
+        return false;
+    }
+}
+
+// Re-run a recent search in the tab it came from by fetching the query again
 async function rerunRecent(i) {
     const s = recentSearches[i];
     if (!s) return;
@@ -655,27 +705,11 @@ async function rerunRecent(i) {
         return;
     }
 
-    showDNA(`Loading ${s.query}...`, 'Retrieving query');
-    try {
-        const resp = await fetch('/api/fetch', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ gene_name: s.query, source: 'ncbi', seq_type: mode })
-        });
-        const data = await resp.json();
-        hideDNA();
-        if (!resp.ok || !data.sequence) {
-            showError(`Could not re-fetch "${s.query}": ${data.error || 'no sequence returned'}. Only gene-symbol queries can be re-run.`);
-            return;
-        }
-        document.getElementById('gene-seq').value = `>${data.symbol} ${data.isoform_id}\n${data.sequence}`;
-        const viewLink = data.source_url ? ` · <a href="${escapeHtml(data.source_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent); font-weight:600; text-decoration:none;">View source ↗</a>` : '';
-        setBanner(`✓ Loaded ${MODES[mode].name.toLowerCase()} sequence for <strong>${escapeHtml(data.symbol)}</strong> (${escapeHtml(data.source)}${viewLink}).`);
-        onSeqInput();
+    const result = await loadById(s.query, mode, { quietErrors: true });
+    if (result === true) {
         runSearch();
-    } catch (e) {
-        hideDNA();
-        showError('Network error: ' + e.message);
+    } else {
+        showError(`${result}. Only gene-symbol and accession queries can be re-run.`);
     }
 }
 
