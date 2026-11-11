@@ -182,7 +182,12 @@ if __name__ == "__main__":
         # --- Visualizations ---
         print(f"\n--- Generating visualizations ---")
         os.makedirs(RESULTS_DIR, exist_ok=True)
-        plot_bar_chart(results, target_gene, output_dir=RESULTS_DIR)
+        chart_rows = [
+            {'gene': s, 'isoform': i,
+             'scores': {'blosum': b, 'kmer': k, 'edit': e, 'motif': m}}
+            for s, i, b, k, e, m, a in results
+        ]
+        plot_bar_chart(chart_rows, target_gene, output_dir=RESULTS_DIR)
 
         plot_heatmap(all_seqs, lambda a, b: kmer_similarity(a, b, k=KMER_K),
                      "K-mer (k=3)", target_gene, output_dir=RESULTS_DIR)

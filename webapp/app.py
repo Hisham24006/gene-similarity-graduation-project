@@ -29,7 +29,9 @@ from config import (
     RECENT_SEARCHES_PATH as RECENT_SEARCHES,
     KMER_K,
     VALID_AA,
-    VALID_DNA
+    VALID_DNA,
+    BLOSUM62_GAP_COSTS,
+    DEFAULT_GAP_COST
 )
 from database_manager import GeneDatabase
 from metrics import (
@@ -37,7 +39,7 @@ from metrics import (
     edit_distance_similarity,
     blosum_similarity,
     dna_similarity,
-    protein_aligner,
+    get_protein_aligner,
     dna_aligner
 )
 from motif_similarity import (
@@ -142,7 +144,11 @@ def generate_charts(results, query_label, all_seqs, promoter_tfs):
 
 @app.route('/')
 def index():
-    return render_template('search.html')
+    return render_template(
+        'search.html',
+        gap_costs=BLOSUM62_GAP_COSTS,
+        default_gap_cost=DEFAULT_GAP_COST
+    )
 
 
 @app.route('/database')
@@ -165,7 +171,8 @@ def visualize():
     for key, pattern in patterns.items():
         matches = glob.glob(os.path.join(RESULTS_DIR, pattern))
         if matches:
-            charts[key] = image_to_base64(sorted(matches)[-1])
+            # Newest file, so the bar chart matches the latest search
+            charts[key] = image_to_base64(max(matches, key=os.path.getmtime))
 
     return render_template('visualize.html', charts=charts)
 
@@ -245,6 +252,18 @@ def api_search():
     metrics = data.get('metrics', ['blosum'])
     top_n = int(data.get('top_n', 10))
 
+    # BLOSUM62 gap costs (BLAST-style existence/extension, protein only)
+    try:
+        gap_cost = (
+            int(data.get('gap_existence', DEFAULT_GAP_COST[0])),
+            int(data.get('gap_extension', DEFAULT_GAP_COST[1]))
+        )
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Gap costs must be whole numbers.'}), 400
+    if gap_cost not in BLOSUM62_GAP_COSTS:
+        return jsonify({'error': f'Unsupported gap costs {gap_cost[0]}/{gap_cost[1]}.'}), 400
+    protein_aligner = get_protein_aligner(*gap_cost)
+
     # ── Get query sequence ──
     if input_type == 'gene_name':
         gene_name = data.get('gene_name', '').upper().strip()
@@ -312,7 +331,7 @@ def api_search():
 
         if 'blosum' in metrics:
             if actual_mode == 'protein':
-                s = blosum_similarity(query_seq, local_seq)
+                s = blosum_similarity(query_seq, local_seq, aligner=protein_aligner)
             else:
                 s = dna_similarity(query_seq, local_seq)
             row['scores']['blosum'] = round(s, 4)
@@ -367,6 +386,7 @@ def api_search():
         'isoform_id':     isoform_id,
         'query_length':   len(query_seq),
         'seq_mode':       actual_mode,
+        'gap_costs':      list(gap_cost) if actual_mode == 'protein' else None,
         'total_compared': len(all_seqs),
         'results':        results[:top_n],
         'alignment':      alignment_text,

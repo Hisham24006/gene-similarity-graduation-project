@@ -5,14 +5,17 @@ Generates visualizations for gene similarity search results.
 
 Functions:
     plot_bar_chart(results, query_gene, output_dir)
-        Top 10 most similar genes — all 3 metrics side by side.
+        Top 10 most similar sequences, one bar per metric that was run.
 
     plot_heatmap(db, metric_fn, seq_type, output_dir)
         All genes vs all genes similarity heatmap (one metric at a time).
 """
 
 import os
+import re
 import numpy as np
+import matplotlib
+matplotlib.use("Agg")  # file-only backend: charts are drawn in a web-app background thread
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import seaborn as sns
@@ -22,38 +25,57 @@ import seaborn as sns
 # Bar Chart — Top 10 results for a query gene
 # -----------------------------------------------------------------------
 
+BAR_METRICS = [
+    ("blosum", "Alignment (BLOSUM62 / DNA)", "#4C72B0"),
+    ("kmer",   "K-mer (k=3)",                "#55A868"),
+    ("edit",   "Edit distance",              "#C44E52"),
+    ("motif",  "Motif (JASPAR)",             "#DD8452"),
+]
+
+
+def safe_filename(name):
+    """Replaces characters that are not allowed in file names (e.g. '|')."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", str(name)).strip("_") or "query"
+
+
 def plot_bar_chart(results, query_gene, output_dir="results"):
     """
-    Plots a grouped bar chart of the top 10 most similar genes
-    showing BLOSUM62, K-mer, and Edit distance scores side by side.
+    Plots a grouped bar chart of the top 10 most similar sequences,
+    with one bar per metric that was run.
 
     Args:
-        results    : list of (symbol, isoform_id, blosum, kmer, edit, avg)
-                     sorted by average score descending
+        results    : list of dicts {'gene', 'isoform', 'scores': {metric: score}}
+                     in ranked order (the format returned by the web app)
         query_gene : name of the query gene (used in title and filename)
         output_dir : folder to save the chart image
     """
     os.makedirs(output_dir, exist_ok=True)
 
-    # Take top 10, skip self-matches (score == 1.0 on all metrics)
-    top = results[:10]
+    # Skip self-matches (identical sequence: 1.0 on every metric), keep top 10
+    top = [
+        r for r in results
+        if not (r["scores"] and all(v >= 1.0 for v in r["scores"].values()))
+    ][:10]
+    if not top:
+        print("  Bar chart skipped: no results besides self-matches.")
+        return None
 
-    labels   = [f"{s}\n{i[:12]}" for s, i, b, k, e, m, a in top]
-    blosum  = [b for s, i, b, k, e, m, a in top]
-    kmer    = [k for s, i, b, k, e, m, a in top]
-    edit    = [e for s, i, b, k, e, m, a in top]
-    motif   = [m for s, i, b, k, e, m, a in top]
+    metrics = [m for m in BAR_METRICS if any(m[0] in r["scores"] for r in top)]
+    if not metrics:
+        return None
 
+    labels = [f"{r['gene']}\n{r['isoform'][:12]}" for r in top]
     x      = np.arange(len(labels))
-    width  = 0.25
+    width  = 0.8 / len(metrics)
 
     fig, ax = plt.subplots(figsize=(14, 6))
 
-    bars1 = ax.bar(x - width, blosum, width, label="BLOSUM62",     color="#4C72B0")
-    bars2 = ax.bar(x,         kmer,   width, label="K-mer (k=3)",  color="#55A868")
-    bars3 = ax.bar(x + width, edit,   width, label="Edit distance", color="#C44E52")
+    for n, (key, name, color) in enumerate(metrics):
+        values = [r["scores"].get(key, 0.0) for r in top]
+        offset = (n - (len(metrics) - 1) / 2) * width
+        ax.bar(x + offset, values, width, label=name, color=color)
 
-    ax.set_title(f"Top 10 similar genes to {query_gene}", fontsize=14, pad=15)
+    ax.set_title(f"Top {len(top)} similar sequences to {query_gene}", fontsize=14, pad=15)
     ax.set_xlabel("Gene | Isoform", fontsize=11)
     ax.set_ylabel("Similarity score (0–1)", fontsize=11)
     ax.set_xticks(x)
@@ -65,10 +87,10 @@ def plot_bar_chart(results, query_gene, output_dir="results"):
 
     fig.tight_layout()
 
-    path = os.path.join(output_dir, f"bar_{query_gene}.png")
+    path = os.path.join(output_dir, f"bar_{safe_filename(query_gene)}.png")
     fig.savefig(path, dpi=150)
     plt.close(fig)
-    print(f"  Bar chart saved → {path}")
+    print(f"  Bar chart saved -> {path}")
     return path
 
 
@@ -140,5 +162,5 @@ def plot_heatmap(all_seqs, metric_fn, metric_name, query_gene, output_dir="resul
     path = os.path.join(output_dir, f"heatmap_{safe_name}.png")
     fig.savefig(path, dpi=150)
     plt.close(fig)
-    print(f"  Heatmap saved     → {path}")
+    print(f"  Heatmap saved     -> {path}")
     return path

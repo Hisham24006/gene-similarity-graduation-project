@@ -39,6 +39,14 @@ PROMOTER_BP = 1000
 PSEUDOCOUNT = 0.5
 SCORE_THRESHOLD_FRACTION = 0.80
 
+# BLOSUM62 gap costs offered by NCBI BLAST, as (existence, extension).
+# A gap of length k costs existence + k * extension, as in BLAST.
+BLOSUM62_GAP_COSTS = [
+    (11, 2), (10, 2), (9, 2), (8, 2), (7, 2), (6, 2),
+    (13, 1), (12, 1), (11, 1), (10, 1), (9, 1),
+]
+DEFAULT_GAP_COST = (11, 1)  # NCBI BLAST default for BLOSUM62
+
 VALID_AA = set("ACDEFGHIKLMNPQRSTVWYacdefghiklmnpqrstvwy")
 VALID_DNA = set("ATGCatgcNn")
 

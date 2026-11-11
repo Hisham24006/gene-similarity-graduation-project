@@ -87,6 +87,20 @@
                     If the chosen metric is not running, the first selected metric is used.
                 </div>
             </div>
+            <div class="form-group">
+                <label class="form-label" for="gap-costs">Gap costs (BLOSUM62)</label>
+                <select id="gap-costs" class="form-input">
+                    {% for existence, extension in gap_costs %}
+                    <option value="{{ existence }},{{ extension }}"
+                        {% if (existence, extension) == default_gap_cost %}selected{% endif %}>
+                        Existence: {{ existence }} Extension: {{ extension }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <div class="text-muted text-sm mt-8">
+                    Same options as NCBI BLAST. A gap of length k costs existence + k × extension. Protein searches only.
+                </div>
+            </div>
         </div>
 
         <button class="btn btn-primary" style="width:100%;" onclick="runSearch()" id="search-btn">
@@ -271,7 +285,11 @@ async function runSearch() {
     }
 
     const sortBy = document.getElementById('rank-by').value;
-    const body = { input_type: 'sequence', sequence: seq, metrics, top_n: topN, sort_by: sortBy };
+    const [gapExistence, gapExtension] = document.getElementById('gap-costs').value.split(',').map(Number);
+    const body = {
+        input_type: 'sequence', sequence: seq, metrics, top_n: topN, sort_by: sortBy,
+        gap_existence: gapExistence, gap_extension: gapExtension
+    };
 
     showDNA('Running similarity search...', 'Comparing against database isoforms');
     document.getElementById('search-btn').disabled = true;
@@ -320,6 +338,7 @@ function renderResults(data, metrics) {
         <div class="stat-chip"><div class="stat-val">${data.query_length.toLocaleString()}</div><div class="stat-label">${modeLabel} Length</div></div>
         <div class="stat-chip"><div class="stat-val">${data.total_compared}</div><div class="stat-label">Isoforms Compared</div></div>
         <div class="stat-chip"><div class="stat-val">${modeLabel}</div><div class="stat-label">Mode</div></div>
+        ${data.gap_costs && metrics.includes('blosum') ? `<div class="stat-chip"><div class="stat-val">${data.gap_costs[0]} / ${data.gap_costs[1]}</div><div class="stat-label">Gap Costs</div></div>` : ''}
     `;
 
     renderTable(data.results, metrics);

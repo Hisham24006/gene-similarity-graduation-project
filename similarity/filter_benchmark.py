@@ -7,8 +7,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'database'))
 
 from database_manager import GeneDatabase
 from kmer_index import get_candidate_sequences, build_index_from_database
-from metrics import kmer_similarity, edit_distance_similarity
-from Bio.Align import PairwiseAligner, substitution_matrices
+from metrics import kmer_similarity, edit_distance_similarity, blosum_similarity
 
 DB_PATH = os.path.join(
     os.path.dirname(__file__), '..', 'database', 'gene_vault.db'
@@ -17,18 +16,6 @@ DB_PATH = os.path.join(
 TOP_N = 80
 K = 3
 TEST_QUERIES = 10
-
-aligner = PairwiseAligner()
-aligner.substitution_matrix = substitution_matrices.load("BLOSUM62")
-aligner.mode = "local"
-aligner.open_gap_score = -10
-aligner.extend_gap_score = -0.5
-
-
-def blosum_similarity(seq_a, seq_b):
-    score = aligner.score(seq_a, seq_b)
-    max_score = aligner.score(seq_a, seq_a)
-    return max(0.0, score / max_score) if max_score > 0 else 0.0
 
 def main():
     db = GeneDatabase(db_path=DB_PATH)
