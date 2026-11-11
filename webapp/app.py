@@ -242,7 +242,7 @@ def api_search():
     input_type = data.get('input_type', 'gene_name')
     fetch_type = data.get('fetch_type', 'protein')   # 'protein' or 'dna'
     seq_mode = data.get('seq_mode', 'protein')      # what to search against
-    metrics = data.get('metrics', ['blosum', 'kmer', 'edit', 'motif'])
+    metrics = data.get('metrics', ['blosum'])
     top_n = int(data.get('top_n', 10))
 
     # ── Get query sequence ──
@@ -308,45 +308,37 @@ def api_search():
     # ── Run metrics ──
     results = []
     for symbol, iso_id, local_seq in candidate_seqs:
-        row = {'gene': symbol, 'isoform': iso_id, 'scores': {}, 'average': 0.0}
-        total = 0
-        count = 0
+        row = {'gene': symbol, 'isoform': iso_id, 'scores': {}}
 
-        if actual_mode == 'protein':
-            if 'blosum' in metrics:
+        if 'blosum' in metrics:
+            if actual_mode == 'protein':
                 s = blosum_similarity(query_seq, local_seq)
-                row['scores']['blosum'] = round(s, 4)
-                total += s
-                count += 1
-        else:
-            if 'blosum' in metrics:
+            else:
                 s = dna_similarity(query_seq, local_seq)
-                row['scores']['blosum'] = round(s, 4)
-                total += s
-                count += 1
+            row['scores']['blosum'] = round(s, 4)
 
         if 'kmer' in metrics:
             s = kmer_similarity(query_seq, local_seq, k=KMER_K)
             row['scores']['kmer'] = round(s, 4)
-            total += s
-            count += 1
 
         if 'edit' in metrics:
             s = edit_distance_similarity(query_seq, local_seq)
             row['scores']['edit'] = round(s, 4)
-            total += s
-            count += 1
 
         if 'motif' in metrics:
             s = jaccard_motif_similarity(query_tfs, promoter_tfs.get(symbol, set()))
             row['scores']['motif'] = round(s, 4)
-            total += s
-            count += 1
 
-        row['average'] = round(total / count, 4) if count > 0 else 0.0
         results.append(row)
 
-    results.sort(key=lambda x: x['average'], reverse=True)
+    # Metrics use different scales, so they are never combined. Rank by one
+    # metric: the requested one if it ran, otherwise the first one that did.
+    metric_order = ['blosum', 'kmer', 'edit', 'motif']
+    sort_by = data.get('sort_by', 'blosum')
+    if sort_by not in metrics:
+        sort_by = next((m for m in metric_order if m in metrics), None)
+    if sort_by:
+        results.sort(key=lambda x: x['scores'].get(sort_by, 0.0), reverse=True)
 
     # ── Save recent search ──
     save_recent_search(query_label, actual_mode, metrics, len(results))
