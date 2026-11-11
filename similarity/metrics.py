@@ -10,18 +10,42 @@ Available metrics:
     - edit_distance_similarity(seq_a, seq_b) : normalized Levenshtein distance
 """
 
+from functools import lru_cache
+
 from Bio.Align import PairwiseAligner, substitution_matrices
+
+from config import DEFAULT_GAP_COST
 
 # -----------------------------------------------------------------------
 # Shared Pairwise Aligners
 # -----------------------------------------------------------------------
 
-# Protein Aligner (BLOSUM62)
-protein_aligner = PairwiseAligner()
-protein_aligner.substitution_matrix = substitution_matrices.load("BLOSUM62")
-protein_aligner.mode = 'local'
-protein_aligner.open_gap_score = -10
-protein_aligner.extend_gap_score = -0.5
+BLOSUM62 = substitution_matrices.load("BLOSUM62")
+
+
+@lru_cache(maxsize=None)
+def get_protein_aligner(existence=DEFAULT_GAP_COST[0], extension=DEFAULT_GAP_COST[1]):
+    """
+    Returns a BLOSUM62 local aligner using BLAST-style gap costs.
+
+    BLAST charges existence + k * extension for a gap of length k.
+    Biopython scores the first gap position with open_gap_score and each
+    additional one with extend_gap_score, so the first position costs
+    existence + extension.
+
+    Aligners are cached and never modified after creation, so they are
+    safe to share between requests.
+    """
+    aligner = PairwiseAligner()
+    aligner.substitution_matrix = BLOSUM62
+    aligner.mode = 'local'
+    aligner.open_gap_score = -(existence + extension)
+    aligner.extend_gap_score = -extension
+    return aligner
+
+
+# Protein Aligner (BLOSUM62, BLAST default gap costs)
+protein_aligner = get_protein_aligner()
 
 # DNA / Nucleotide Aligner
 dna_aligner = PairwiseAligner()
@@ -32,13 +56,15 @@ dna_aligner.open_gap_score = -5
 dna_aligner.extend_gap_score = -2
 
 
-def blosum_similarity(seq_a, seq_b):
+def blosum_similarity(seq_a, seq_b, aligner=None):
     """
     Normalized BLOSUM62 local alignment similarity score (0.0 to 1.0).
     Divides the local alignment score by the self-alignment score of seq_a.
+    Pass an aligner from get_protein_aligner() to use other gap costs.
     """
-    score = protein_aligner.score(seq_a, seq_b)
-    mx = protein_aligner.score(seq_a, seq_a)
+    aligner = aligner or protein_aligner
+    score = aligner.score(seq_a, seq_b)
+    mx = aligner.score(seq_a, seq_a)
     return max(0.0, score / mx) if mx > 0 else 0.0
 
 
