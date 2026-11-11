@@ -1,9 +1,19 @@
 {% extends "base.html" %}
 {% block title %}Search — GeneSim{% endblock %}
 {% block page_title %}Similarity Search{% endblock %}
-{% block page_sub %}Compare a sequence against 60 human genes using multiple metrics{% endblock %}
+{% block page_sub %}Compare a protein or nucleotide sequence against 60 human genes using multiple metrics{% endblock %}
 
 {% block content %}
+
+<!-- Search type tabs -->
+<div class="tab-bar" role="tablist">
+    <button class="tab-btn active" id="tab-protein" role="tab" aria-selected="true" onclick="switchMode('protein')">
+        🧪 Protein Search
+    </button>
+    <button class="tab-btn" id="tab-dna" role="tab" aria-selected="false" onclick="switchMode('dna')">
+        🧬 Nucleotide Search
+    </button>
+</div>
 
 <div style="display:grid; grid-template-columns:360px 1fr; gap:20px; align-items:start;">
 
@@ -11,7 +21,7 @@
     <div>
         <div class="card">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-                <div class="card-title" style="margin-bottom:0">Query Sequence</div>
+                <div class="card-title" style="margin-bottom:0" id="query-title">Protein Query</div>
                 <a href="/fetch" style="font-size:12px; color:var(--accent); text-decoration:none; font-weight:500;">
                     📥 Fetch sequence →
                 </a>
@@ -24,17 +34,16 @@
 
             <div class="form-group" style="margin-bottom:10px;">
                 <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
-                    <span>Sequence (AA or DNA / FASTA)</span>
+                    <span id="seq-input-label">Amino-acid sequence (plain or FASTA)</span>
                     <button class="btn btn-ghost btn-sm" onclick="clearSequence()" style="padding:2px 8px; font-size:11px; height:auto;">Clear</button>
                 </label>
                 <textarea id="gene-seq" class="form-textarea" rows="7"
-                    placeholder=">optional_header&#10;MEEPQSDPSVEPPLSQETFSDLWKLLPENN...&#10;&#10;Or paste a DNA sequence (ATGC...)"
                     oninput="onSeqInput()"></textarea>
             </div>
 
-            <div id="seq-meta-info" class="text-muted text-sm" style="display:flex; justify-content:space-between; align-items:center;">
-                <span id="detected-type-label">Type will be auto-detected</span>
-                <span id="seq-len-badge" style="font-family:var(--mono); font-size:11px;"></span>
+            <div id="seq-meta-info" class="text-muted text-sm" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                <span id="detected-type-label"></span>
+                <span id="seq-len-badge" style="font-family:var(--mono); font-size:11px; white-space:nowrap;"></span>
             </div>
         </div>
 
@@ -43,11 +52,11 @@
             <div class="toggle-group">
                 <label class="toggle-chip checked" id="chip-blosum">
                     <input type="checkbox" id="metric-blosum" checked onchange="toggleChip(this,'chip-blosum')">
-                    <span class="dot"></span> BLOSUM62 / DNA Align
+                    <span class="dot"></span> <span id="label-align">BLOSUM62</span>
                 </label>
                 <label class="toggle-chip" id="chip-kmer">
                     <input type="checkbox" id="metric-kmer" onchange="toggleChip(this,'chip-kmer')">
-                    <span class="dot"></span> K-mer
+                    <span class="dot"></span> <span id="label-kmer">K-mer (k={{ kmer_k }})</span>
                 </label>
                 <label class="toggle-chip" id="chip-edit">
                     <input type="checkbox" id="metric-edit" onchange="toggleChip(this,'chip-edit')">
@@ -61,8 +70,11 @@
             <div class="text-muted text-sm mt-8">
                 ⚠ Alignment is slower on long sequences. Motif uses cached TF sets.
             </div>
+            <div id="edit-warning" class="alert alert-warning hidden" style="padding:8px 12px; font-size:12px; margin-top:10px; line-height:1.4;">
+                ⚠ Edit distance is very slow on nucleotide sequences. Database mRNAs are several thousand bases long, so a search can take many minutes.
+            </div>
             <div id="motif-warning" class="alert alert-warning hidden" style="padding:8px 12px; font-size:12px; margin-top:10px; line-height:1.4;">
-                ⚠ Motif scores need a known gene symbol. For pasted or fetched sequences without a gene-symbol header (for example <span class="text-mono">&gt;TP53</span>), the motif score will be 0 for every result.
+                ⚠ Motif scores need the gene symbol as the FASTA header (for example <span class="text-mono">&gt;TP53</span>). Sequences loaded from the Fetch page get one automatically; other sequences score 0 for every result.
             </div>
         </div>
 
@@ -78,8 +90,8 @@
             <div class="form-group">
                 <label class="form-label" for="rank-by">Rank results by</label>
                 <select id="rank-by" class="form-input">
-                    <option value="blosum" selected>Alignment (BLOSUM62 / DNA)</option>
-                    <option value="kmer">K-mer</option>
+                    <option value="blosum" id="rank-opt-align" selected>Alignment (BLOSUM62)</option>
+                    <option value="kmer" id="rank-opt-kmer">K-mer (k={{ kmer_k }})</option>
                     <option value="edit">Edit Distance</option>
                     <option value="motif">Motif (JASPAR)</option>
                 </select>
@@ -87,7 +99,9 @@
                     If the chosen metric is not running, the first selected metric is used.
                 </div>
             </div>
-            <div class="form-group">
+
+            <!-- Protein-only options -->
+            <div class="form-group" id="protein-options">
                 <label class="form-label" for="gap-costs">Gap costs (BLOSUM62)</label>
                 <select id="gap-costs" class="form-input">
                     {% for existence, extension in gap_costs %}
@@ -98,13 +112,31 @@
                     {% endfor %}
                 </select>
                 <div class="text-muted text-sm mt-8">
-                    Same options as NCBI BLAST. A gap of length k costs existence + k × extension. Protein searches only.
+                    Same options as NCBI BLAST. A gap of length k costs existence + k × extension.
                 </div>
+            </div>
+
+            <!-- Nucleotide-only info -->
+            <div class="form-group hidden" id="dna-options">
+                <div class="form-label">Nucleotide scoring</div>
+                <div class="text-muted text-sm" style="line-height:1.5;">
+                    Local alignment with match +2, mismatch −3, gap open −5, gap extend −2.
+                    K-mer uses k={{ kmer_k_dna }} (4<sup>{{ kmer_k_dna }}</sup> possible words); shorter words match almost every long DNA sequence.
+                </div>
+                <label style="display:flex; gap:8px; align-items:flex-start; margin-top:12px; font-size:13px; cursor:pointer;">
+                    <input type="checkbox" id="include-genomic" style="margin-top:3px;">
+                    <span>
+                        Include genomic gene sequences
+                        <span class="text-muted text-sm" style="display:block; line-height:1.4;">
+                            60 Ensembl whole-gene sequences (introns included, up to ~360 kb). Off by default: they make a search several times slower and are not directly comparable to mRNA.
+                        </span>
+                    </span>
+                </label>
             </div>
         </div>
 
         <button class="btn btn-primary" style="width:100%;" onclick="runSearch()" id="search-btn">
-            🔍 Run Search
+            🔍 Run Protein Search
         </button>
 
         <!-- Recent Searches -->
@@ -122,10 +154,10 @@
     <!-- Right: Results -->
     <div>
         <div id="empty-state" class="card" style="text-align:center; padding:64px 24px;">
-            <div style="font-size:52px; margin-bottom:18px">🧬</div>
-            <div style="font-size:17px; font-weight:600; margin-bottom:8px; color:var(--text)">Ready to search</div>
+            <div style="font-size:52px; margin-bottom:18px" id="empty-icon">🧪</div>
+            <div style="font-size:17px; font-weight:600; margin-bottom:8px; color:var(--text)" id="empty-title">Ready for a protein search</div>
             <div class="text-muted" style="font-size:13px; max-width:300px; margin:0 auto; line-height:1.6">
-                Enter a gene name or paste a sequence, choose your metrics, and click Run Search.
+                Paste a sequence or fetch one, choose your metrics, and click Run Search.
             </div>
         </div>
 
@@ -135,7 +167,7 @@
 
             <div class="stat-row" id="result-stats"></div>
 
-            <div class="card">
+            <div class="card" id="results-card">
                 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
                     <div class="card-title" style="margin-bottom:0">Results</div>
                     <input type="text" id="results-search"
@@ -170,17 +202,152 @@
 </div>
 
 <script>
-let allResults = [];
+// ── Mode (tab) configuration ──
+const MODES = {
+    protein: {
+        name:        'Protein',
+        icon:        '🧪',
+        alignLabel:  'BLOSUM62',
+        kmerK:       {{ kmer_k }},
+        unit:        'aa',
+        inputLabel:  'Amino-acid sequence (plain or FASTA)',
+        placeholder: '>TP53\nMEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQ...',
+    },
+    dna: {
+        name:        'Nucleotide',
+        icon:        '🧬',
+        alignLabel:  'DNA Alignment',
+        kmerK:       {{ kmer_k_dna }},
+        unit:        'bp',
+        inputLabel:  'Nucleotide sequence (A, C, G, T, N; plain or FASTA)',
+        placeholder: '>TP53\nATGGAGGAGCCGCAGTCAGATCCTAGCGTCGAGCCCCCTCTGAGTCAGGAAACATTTTCAGACC...',
+    },
+};
+const VALID_AA  = /^[ACDEFGHIKLMNPQRSTVWY]*$/;
+const VALID_NUC = /^[ACGTN]*$/;
+
+let currentMode = 'protein';
+// Each tab keeps its own draft sequence, loaded-banner and last results.
+const drafts     = { protein: { text: '', banner: '' }, dna: { text: '', banner: '' } };
+const lastSearch = { protein: null, dna: null };
+
+let allResults    = [];
 let activeMetrics = [];
+let activeData    = null;
+
+const METRIC_COLORS = {
+    blosum: '#0071e3',
+    kmer:   '#34c759',
+    edit:   '#ff3b30',
+    motif:  '#ff9500',
+};
+
+function metricLabel(m, data) {
+    const mode = (data && data.seq_mode === 'dna') ? 'dna' : 'protein';
+    if (m === 'blosum') return MODES[mode].alignLabel;
+    if (m === 'kmer')   return `K-mer (k=${data && data.kmer_k ? data.kmer_k : MODES[mode].kmerK})`;
+    if (m === 'edit')   return 'Edit Dist';
+    if (m === 'motif')  return 'Motif';
+    return m;
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+// ── Tabs ──
+function switchMode(mode) {
+    if (!MODES[mode] || mode === currentMode && document.getElementById('gene-seq').dataset.ready) {
+        return;
+    }
+    const seqBox = document.getElementById('gene-seq');
+
+    // Save the outgoing tab's draft
+    if (seqBox.dataset.ready) {
+        drafts[currentMode].text = seqBox.value;
+    }
+    seqBox.dataset.ready = '1';
+    currentMode = mode;
+    const cfg = MODES[mode];
+
+    // Tab buttons
+    for (const m of Object.keys(MODES)) {
+        const btn = document.getElementById(`tab-${m}`);
+        btn.classList.toggle('active', m === mode);
+        btn.setAttribute('aria-selected', m === mode ? 'true' : 'false');
+    }
+
+    // Labels and mode-specific options
+    document.getElementById('query-title').textContent      = `${cfg.name} Query`;
+    document.getElementById('seq-input-label').textContent  = cfg.inputLabel;
+    seqBox.placeholder                                      = cfg.placeholder;
+    document.getElementById('label-align').textContent      = cfg.alignLabel;
+    document.getElementById('label-kmer').textContent       = `K-mer (k=${cfg.kmerK})`;
+    document.getElementById('rank-opt-align').textContent   = mode === 'dna' ? 'DNA Alignment' : 'Alignment (BLOSUM62)';
+    document.getElementById('rank-opt-kmer').textContent    = `K-mer (k=${cfg.kmerK})`;
+    document.getElementById('protein-options').classList.toggle('hidden', mode !== 'protein');
+    document.getElementById('dna-options').classList.toggle('hidden', mode !== 'dna');
+    document.getElementById('search-btn').textContent       = `🔍 Run ${cfg.name} Search`;
+    document.getElementById('empty-icon').textContent       = cfg.icon;
+    document.getElementById('empty-title').textContent      = `Ready for a ${cfg.name.toLowerCase()} search`;
+    updateWarnings();
+
+    // Restore this tab's draft and banner
+    seqBox.value = drafts[mode].text;
+    setBanner(drafts[mode].banner);
+    onSeqInput();
+
+    // Restore this tab's last results
+    document.getElementById('results-search').value = '';
+    if (lastSearch[mode]) {
+        renderResults(lastSearch[mode].data, lastSearch[mode].metrics);
+        document.getElementById('empty-state').classList.add('hidden');
+    } else {
+        allResults = []; activeMetrics = []; activeData = null;
+        document.getElementById('results-content').classList.add('hidden');
+        document.getElementById('empty-state').classList.remove('hidden');
+    }
+
+    // Remember the tab for reloads and shareable links
+    try { sessionStorage.setItem('genesim_search_mode', mode); } catch (e) {}
+    const url = new URL(window.location.href);
+    url.searchParams.set('mode', mode);
+    url.searchParams.delete('from');
+    history.replaceState(null, '', url);
+}
+
+// Move the current sequence to the other tab (used by the "looks like" hint)
+function moveSequenceTo(mode) {
+    const seqBox = document.getElementById('gene-seq');
+    const text = seqBox.value;
+    const banner = drafts[currentMode].banner;
+    seqBox.value = '';
+    drafts[currentMode] = { text: '', banner: '' };
+    setBanner('');
+    switchMode(mode);
+    drafts[mode] = { text, banner };
+    seqBox.value = text;
+    setBanner(banner);
+    onSeqInput();
+}
+
+function setBanner(html) {
+    drafts[currentMode].banner = html;
+    const banner = document.getElementById('loaded-banner');
+    document.getElementById('loaded-banner-text').innerHTML = html;
+    banner.classList.toggle('hidden', !html);
+}
 
 function toggleChip(cb, id) {
     document.getElementById(id).classList.toggle('checked', cb.checked);
-    updateMotifWarning();
+    updateWarnings();
 }
 
-function updateMotifWarning() {
-    const on = document.getElementById('metric-motif').checked;
-    document.getElementById('motif-warning').classList.toggle('hidden', !on);
+function updateWarnings() {
+    const motifOn = document.getElementById('metric-motif').checked;
+    const editOn  = document.getElementById('metric-edit').checked;
+    document.getElementById('motif-warning').classList.toggle('hidden', !motifOn);
+    document.getElementById('edit-warning').classList.toggle('hidden', !(editOn && currentMode === 'dna'));
 }
 
 function getSelectedMetrics() {
@@ -192,106 +359,113 @@ function getSelectedMetrics() {
     return m;
 }
 
-const METRIC_COLORS = {
-    blosum: '#0071e3',
-    kmer:   '#34c759',
-    edit:   '#ff3b30',
-    motif:  '#ff9500',
-};
-
-const METRIC_LABELS = {
-    blosum: 'Alignment',
-    kmer:   'K-mer',
-    edit:   'Edit Dist',
-    motif:  'Motif',
-};
-
 function clearSequence() {
     document.getElementById('gene-seq').value = '';
-    document.getElementById('loaded-banner').classList.add('hidden');
-    sessionStorage.removeItem('genesim_query_seq');
-    sessionStorage.removeItem('genesim_query_symbol');
-    sessionStorage.removeItem('genesim_query_source');
-    sessionStorage.removeItem('genesim_query_isoform');
-    sessionStorage.removeItem('genesim_query_source_url');
+    drafts[currentMode] = { text: '', banner: '' };
+    setBanner('');
+    for (const key of ['seq', 'symbol', 'source', 'type', 'isoform', 'source_url']) {
+        sessionStorage.removeItem(`genesim_query_${key}`);
+    }
     onSeqInput();
+}
+
+function parseSequence(raw) {
+    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const body = (lines.length && lines[0].startsWith('>')) ? lines.slice(1) : lines;
+    return body.join('').toUpperCase().replace(/\s+/g, '');
 }
 
 function onSeqInput() {
     const raw = document.getElementById('gene-seq').value.trim();
+    drafts[currentMode].text = document.getElementById('gene-seq').value;
     const typeLabel = document.getElementById('detected-type-label');
-    const lenBadge = document.getElementById('seq-len-badge');
+    const lenBadge  = document.getElementById('seq-len-badge');
+    const cfg = MODES[currentMode];
 
+    typeLabel.style.color = 'var(--text-muted)';
     if (!raw) {
-        typeLabel.textContent = 'Type will be auto-detected';
-        typeLabel.style.color = 'var(--text-muted)';
+        typeLabel.textContent = `Paste a ${cfg.name.toLowerCase()} sequence or fetch one`;
         lenBadge.textContent = '';
         return;
     }
 
-    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    let seq = '';
-    if (lines.length && lines[0].startsWith('>')) {
-        seq = lines.slice(1).join('').toUpperCase().replace(/\s+/g, '');
-    } else {
-        seq = lines.join('').toUpperCase().replace(/\s+/g, '');
-    }
-
+    const seq = parseSequence(raw);
     if (!seq) {
         typeLabel.textContent = 'Enter sequence letters';
-        typeLabel.style.color = 'var(--text-muted)';
         lenBadge.textContent = '';
         return;
     }
+    lenBadge.textContent = `${seq.length.toLocaleString()} ${cfg.unit}`;
 
-    const isDna = !((/[^ATGCN]/i).test(seq));
-    if (isDna) {
-        typeLabel.innerHTML = '🧬 <strong style="color:var(--purple)">DNA sequence</strong>';
-        lenBadge.textContent = `${seq.length.toLocaleString()} bp`;
+    const isNuc     = VALID_NUC.test(seq);
+    const isProtein = VALID_AA.test(seq);
+    const other     = currentMode === 'protein' ? 'dna' : 'protein';
+    const moveLink  = `<a href="#" onclick="moveSequenceTo('${other}'); return false;" style="color:var(--accent); font-weight:600; text-decoration:none;">Move it to the ${MODES[other].name} tab →</a>`;
+
+    if (currentMode === 'dna') {
+        if (isNuc) {
+            typeLabel.innerHTML = '🧬 <strong style="color:var(--purple)">Nucleotide sequence</strong>';
+        } else if (isProtein) {
+            typeLabel.innerHTML = `<span style="color:#c0392b">⚠ This looks like a protein sequence.</span> ${moveLink}`;
+        } else {
+            typeLabel.innerHTML = '<span style="color:#c0392b">⚠ Only A, C, G, T and N are allowed.</span>';
+        }
     } else {
-        typeLabel.innerHTML = '🧪 <strong style="color:var(--accent)">Protein sequence</strong>';
-        lenBadge.textContent = `${seq.length.toLocaleString()} aa`;
+        if (!isProtein) {
+            typeLabel.innerHTML = '<span style="color:#c0392b">⚠ Contains characters that are not amino acids.</span>';
+        } else if (isNuc && seq.length >= 20) {
+            // Only A/C/G/T/N letters: almost certainly DNA pasted into the protein tab
+            typeLabel.innerHTML = `<span style="color:#8a5a00">This looks like a nucleotide sequence.</span> ${moveLink}`;
+        } else {
+            typeLabel.innerHTML = '🧪 <strong style="color:var(--accent)">Protein sequence</strong>';
+        }
     }
 }
 
-// Check if a sequence was preloaded from the Fetch page
+// Load a sequence handed over from the Fetch page into its matching tab.
+// The gene symbol becomes the FASTA header so the motif metric can use it.
 function checkPreloadedSeq() {
     const storedSeq = sessionStorage.getItem('genesim_query_seq');
-    if (storedSeq) {
-        const symbol = sessionStorage.getItem('genesim_query_symbol') || 'Gene';
-        const source = sessionStorage.getItem('genesim_query_source') || 'Database';
-        const isoform = sessionStorage.getItem('genesim_query_isoform') || '';
-        const sourceUrl = sessionStorage.getItem('genesim_query_source_url') || '';
+    if (!storedSeq) return null;
 
-        document.getElementById('gene-seq').value = storedSeq;
-        const banner = document.getElementById('loaded-banner');
-        const viewLink = sourceUrl ? ` · <a href="${sourceUrl}" target="_blank" rel="noopener noreferrer" style="color:var(--accent); font-weight:600; text-decoration:none;">View source ↗</a>` : '';
-        document.getElementById('loaded-banner-text').innerHTML =
-            `✓ Loaded sequence for <strong>${symbol}</strong> (${isoform ? isoform + ' · ' : ''}${source}${viewLink}). Ready to search!`;
-        banner.classList.remove('hidden');
-        onSeqInput();
-    }
+    const symbol    = sessionStorage.getItem('genesim_query_symbol') || '';
+    const source    = sessionStorage.getItem('genesim_query_source') || 'Database';
+    const isoform   = sessionStorage.getItem('genesim_query_isoform') || '';
+    const sourceUrl = sessionStorage.getItem('genesim_query_source_url') || '';
+    const type      = sessionStorage.getItem('genesim_query_type') === 'dna' ? 'dna' : 'protein';
+
+    const header = symbol ? `>${symbol}${isoform ? ' ' + isoform : ''}\n` : '';
+    const viewLink = sourceUrl ? ` · <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent); font-weight:600; text-decoration:none;">View source ↗</a>` : '';
+    drafts[type] = {
+        text:   header + storedSeq,
+        banner: `✓ Loaded ${MODES[type].name.toLowerCase()} sequence for <strong>${escapeHtml(symbol || 'gene')}</strong> (${isoform ? escapeHtml(isoform) + ' · ' : ''}${escapeHtml(source)}${viewLink}). Ready to search!`,
+    };
+    return type;
 }
 
 async function runSearch() {
     const metrics = getSelectedMetrics();
     if (!metrics.length) { alert('Select at least one metric.'); return; }
 
+    const mode = currentMode;
     const topN = parseInt(document.getElementById('top-n').value);
-    const seq = document.getElementById('gene-seq').value.trim();
+    const seq  = document.getElementById('gene-seq').value.trim();
     if (!seq) {
-        alert('Please paste or provide a sequence to search against the database.\n\nYou can also click "Fetch sequence" at the top to retrieve one from NCBI, UniProt, or Ensembl.');
+        alert(`Please paste or provide a ${MODES[mode].name.toLowerCase()} sequence to search against the database.\n\nYou can also click "Fetch sequence" to retrieve one from NCBI, UniProt, or Ensembl.`);
         return;
     }
 
     const sortBy = document.getElementById('rank-by').value;
-    const [gapExistence, gapExtension] = document.getElementById('gap-costs').value.split(',').map(Number);
-    const body = {
-        input_type: 'sequence', sequence: seq, metrics, top_n: topN, sort_by: sortBy,
-        gap_existence: gapExistence, gap_extension: gapExtension
-    };
+    const body = { input_type: 'sequence', seq_mode: mode, sequence: seq, metrics, top_n: topN, sort_by: sortBy };
+    if (mode === 'protein') {
+        const [gapExistence, gapExtension] = document.getElementById('gap-costs').value.split(',').map(Number);
+        body.gap_existence = gapExistence;
+        body.gap_extension = gapExtension;
+    } else {
+        body.include_genomic = document.getElementById('include-genomic').checked;
+    }
 
-    showDNA('Running similarity search...', 'Comparing against database isoforms');
+    showDNA(`Running ${MODES[mode].name.toLowerCase()} search...`, 'Comparing against database isoforms');
     document.getElementById('search-btn').disabled = true;
     document.getElementById('empty-state').classList.add('hidden');
     document.getElementById('results-content').classList.add('hidden');
@@ -305,14 +479,18 @@ async function runSearch() {
         });
         const data = await resp.json();
         hideDNA();
-        if (!resp.ok) { showError(data.error || 'Search failed'); return; }
-        activeMetrics = metrics;
-        allResults    = data.results;
-        renderResults(data, metrics);
+        if (!resp.ok) {
+            lastSearch[mode] = null;
+            if (currentMode === mode) showError(data.error || 'Search failed');
+            return;
+        }
+        lastSearch[mode] = { data, metrics };
+        // The user may have switched tabs while the search was running
+        if (currentMode === mode) renderResults(data, metrics);
         loadRecent();
     } catch (e) {
         hideDNA();
-        showError('Network error: ' + e.message);
+        if (currentMode === mode) showError('Network error: ' + e.message);
     } finally {
         document.getElementById('search-btn').disabled = false;
     }
@@ -323,22 +501,33 @@ function showError(msg) {
     document.getElementById('empty-state').classList.add('hidden');
     const eb = document.getElementById('error-box');
     eb.className = 'alert alert-error';
-    eb.innerHTML = '❌ ' + msg;
+    eb.textContent = '❌ ' + msg;
     eb.classList.remove('hidden');
+    for (const id of ['result-stats', 'results-card', 'best-match-card', 'alignment-card']) {
+        document.getElementById(id).classList.add('hidden');
+    }
 }
 
 function renderResults(data, metrics) {
+    activeMetrics = metrics;
+    allResults    = data.results;
+    activeData    = data;
+
     document.getElementById('results-content').classList.remove('hidden');
     document.getElementById('error-box').classList.add('hidden');
+    document.getElementById('result-stats').classList.remove('hidden');
+    document.getElementById('results-card').classList.remove('hidden');
 
-    const modeLabel = data.seq_mode === 'dna' ? 'DNA' : 'Protein';
+    const modeLabel = data.seq_mode === 'dna' ? 'Nucleotide' : 'Protein';
+    const unit      = data.seq_mode === 'dna' ? 'bp' : 'aa';
 
     document.getElementById('result-stats').innerHTML = `
-        <div class="stat-chip"><div class="stat-val">${data.query_label}</div><div class="stat-label">Query Gene</div></div>
-        <div class="stat-chip"><div class="stat-val">${data.query_length.toLocaleString()}</div><div class="stat-label">${modeLabel} Length</div></div>
-        <div class="stat-chip"><div class="stat-val">${data.total_compared}</div><div class="stat-label">Isoforms Compared</div></div>
-        <div class="stat-chip"><div class="stat-val">${modeLabel}</div><div class="stat-label">Mode</div></div>
+        <div class="stat-chip"><div class="stat-val">${escapeHtml(data.query_label)}</div><div class="stat-label">Query</div></div>
+        <div class="stat-chip"><div class="stat-val">${data.query_length.toLocaleString()} ${unit}</div><div class="stat-label">Query Length</div></div>
+        <div class="stat-chip"><div class="stat-val">${data.total_compared}</div><div class="stat-label">${data.include_genomic === false ? 'mRNAs Compared' : 'Isoforms Compared'}</div></div>
+        <div class="stat-chip"><div class="stat-val">${modeLabel}</div><div class="stat-label">Search Type</div></div>
         ${data.gap_costs && metrics.includes('blosum') ? `<div class="stat-chip"><div class="stat-val">${data.gap_costs[0]} / ${data.gap_costs[1]}</div><div class="stat-label">Gap Costs</div></div>` : ''}
+        ${metrics.includes('kmer') ? `<div class="stat-chip"><div class="stat-val">k = ${data.kmer_k}</div><div class="stat-label">K-mer Size</div></div>` : ''}
     `;
 
     renderTable(data.results, metrics);
@@ -348,13 +537,13 @@ function renderResults(data, metrics) {
     if (bm) {
         document.getElementById('best-match-info').innerHTML = `
             <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:14px;">
-                <div><div class="text-muted text-sm">Gene</div><div class="gene-badge" style="font-size:18px">${bm.gene}</div></div>
-                <div><div class="text-muted text-sm">Isoform</div><div class="text-mono text-sm" style="margin-top:2px">${bm.isoform}</div></div>
+                <div><div class="text-muted text-sm">Gene</div><div class="gene-badge" style="font-size:18px">${escapeHtml(bm.gene)}</div></div>
+                <div><div class="text-muted text-sm">Isoform</div><div class="text-mono text-sm" style="margin-top:2px">${escapeHtml(bm.isoform)}</div></div>
             </div>
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
                 ${Object.entries(bm.scores).map(([k,v]) => `
                     <div style="background:var(--bg);border:1px solid var(--border-light);border-radius:8px;padding:10px 16px;">
-                        <div class="text-muted text-sm">${METRIC_LABELS[k]}</div>
+                        <div class="text-muted text-sm">${metricLabel(k, data)}</div>
                         <div style="font-family:var(--mono);font-weight:600;color:${METRIC_COLORS[k]}">${v.toFixed(4)}</div>
                     </div>
                 `).join('')}
@@ -379,7 +568,7 @@ function renderTable(results, metrics) {
         <th style="width:36px">#</th>
         <th>Gene</th>
         <th>Isoform</th>
-        ${metrics.map(m => `<th>${METRIC_LABELS[m]}</th>`).join('')}
+        ${metrics.map(m => `<th>${metricLabel(m, activeData)}</th>`).join('')}
     </tr>`;
 
     const tbody = document.getElementById('results-tbody');
@@ -393,8 +582,8 @@ function renderTable(results, metrics) {
     tbody.innerHTML = results.map((r, i) => `
         <tr>
             <td class="text-muted text-sm">${i + 1}</td>
-            <td><span class="gene-badge">${r.gene}</span></td>
-            <td class="text-muted text-sm text-mono" style="font-size:11px">${r.isoform}</td>
+            <td><span class="gene-badge">${escapeHtml(r.gene)}</span></td>
+            <td class="text-muted text-sm text-mono" style="font-size:11px">${escapeHtml(r.isoform)}</td>
             ${metrics.map(m => {
                 const val   = r.scores[m] ?? 0;
                 const color = METRIC_COLORS[m];
@@ -425,61 +614,69 @@ function filterResults(q) {
 }
 
 // ── Recent searches ──
-const METRIC_ABBR = { blosum:'B', kmer:'K', edit:'E', motif:'M' };
+const METRIC_ABBR = { blosum:'A', kmer:'K', edit:'E', motif:'M' };
+let recentSearches = [];
 
 async function loadRecent() {
     const resp = await fetch('/api/recent_searches');
-    const data = await resp.json();
+    recentSearches = await resp.json();
     const list = document.getElementById('recent-list');
 
-    if (!data.length) {
+    if (!recentSearches.length) {
         list.innerHTML = `<div class="text-muted text-sm" style="text-align:center; padding:12px 0">No recent searches yet.</div>`;
         return;
     }
 
-    list.innerHTML = data.map(s => `
+    list.innerHTML = recentSearches.map((s, i) => {
+        const mode = s.mode === 'dna' ? 'dna' : 'protein';
+        return `
         <div style="display:flex; align-items:center; justify-content:space-between;
                     padding:8px 10px; border-radius:8px; margin-bottom:4px;
                     background:var(--bg); border:1px solid var(--border-light); cursor:pointer;"
-             onclick="rerunSearch('${s.query}', '${s.mode}')">
+             onclick="rerunRecent(${i})" title="Re-run in the ${MODES[mode].name} tab">
             <div>
-                <div style="font-weight:600; font-size:13px; color:var(--accent); font-family:var(--mono)">${s.query}</div>
-                <div class="text-muted text-sm">${s.mode} · ${s.metrics.map(m => METRIC_ABBR[m]||m).join('+')} · ${s.results} results</div>
+                <div style="font-weight:600; font-size:13px; color:var(--accent); font-family:var(--mono)">${escapeHtml(s.query)}</div>
+                <div class="text-muted text-sm">${MODES[mode].icon} ${MODES[mode].name} · ${s.metrics.map(m => METRIC_ABBR[m]||m).join('+')} · ${s.results} results</div>
             </div>
-            <div class="text-muted text-sm">${s.time}</div>
-        </div>
-    `).join('');
+            <div class="text-muted text-sm">${escapeHtml(s.time)}</div>
+        </div>`;
+    }).join('');
 }
 
-async function rerunSearch(query, mode) {
-    // If the query was a gene symbol or label, try to fetch sequence from NCBI or populate directly
-    showDNA(`Loading ${query}...`, 'Retrieving query');
+// Re-run a recent search in the tab it came from by fetching the gene again
+async function rerunRecent(i) {
+    const s = recentSearches[i];
+    if (!s) return;
+    const mode = s.mode === 'dna' ? 'dna' : 'protein';
+    switchMode(mode);
+
+    if (s.query === 'custom_sequence') {
+        showError('This search used a pasted sequence without a name, so it cannot be re-run. Paste the sequence again.');
+        return;
+    }
+
+    showDNA(`Loading ${s.query}...`, 'Retrieving query');
     try {
         const resp = await fetch('/api/fetch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ gene_name: query, source: 'ncbi', seq_type: mode || 'protein' })
+            body: JSON.stringify({ gene_name: s.query, source: 'ncbi', seq_type: mode })
         });
         const data = await resp.json();
         hideDNA();
-        if (resp.ok && data.sequence) {
-            document.getElementById('gene-seq').value = data.sequence;
-            const banner = document.getElementById('loaded-banner');
-            const viewLink = data.source_url ? ` · <a href="${data.source_url}" target="_blank" rel="noopener noreferrer" style="color:var(--accent); font-weight:600; text-decoration:none;">View source ↗</a>` : '';
-            document.getElementById('loaded-banner-text').innerHTML =
-                `✓ Loaded sequence for <strong>${query}</strong> (${data.source}${viewLink}).`;
-            banner.classList.remove('hidden');
-            onSeqInput();
-            runSearch();
+        if (!resp.ok || !data.sequence) {
+            showError(`Could not re-fetch "${s.query}": ${data.error || 'no sequence returned'}. Only gene-symbol queries can be re-run.`);
             return;
         }
+        document.getElementById('gene-seq').value = `>${data.symbol} ${data.isoform_id}\n${data.sequence}`;
+        const viewLink = data.source_url ? ` · <a href="${escapeHtml(data.source_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent); font-weight:600; text-decoration:none;">View source ↗</a>` : '';
+        setBanner(`✓ Loaded ${MODES[mode].name.toLowerCase()} sequence for <strong>${escapeHtml(data.symbol)}</strong> (${escapeHtml(data.source)}${viewLink}).`);
+        onSeqInput();
+        runSearch();
     } catch (e) {
         hideDNA();
+        showError('Network error: ' + e.message);
     }
-    // Fallback: paste query directly
-    document.getElementById('gene-seq').value = query;
-    onSeqInput();
-    runSearch();
 }
 
 async function clearRecent() {
@@ -487,8 +684,22 @@ async function clearRecent() {
     loadRecent();
 }
 
-// Check pre-loaded sequence from the Fetch page and recent searches
-checkPreloadedSeq();
-loadRecent();
+// ── Start-up ──
+(function init() {
+    const params = new URLSearchParams(window.location.search);
+    const preloadedType = checkPreloadedSeq();
+
+    let mode = params.get('mode');
+    if (params.get('from') === 'fetch' && preloadedType) {
+        mode = preloadedType;                       // open the tab matching the fetched sequence
+    }
+    if (!MODES[mode]) {
+        try { mode = sessionStorage.getItem('genesim_search_mode'); } catch (e) { mode = null; }
+    }
+    if (!MODES[mode]) mode = 'protein';
+
+    switchMode(mode);
+    loadRecent();
+})();
 </script>
 {% endblock %}
