@@ -10,6 +10,7 @@ import base64
 import time
 import random
 import threading
+import multiprocessing
 import platform
 import psutil
 
@@ -28,6 +29,7 @@ from config import (
     RESULTS_DIR,
     RECENT_SEARCHES_PATH as RECENT_SEARCHES,
     KMER_K,
+    KMER_K_DNA,
     VALID_AA,
     VALID_DNA,
     BLOSUM62_GAP_COSTS,
@@ -55,13 +57,19 @@ from fetcher import (
 )
 from visualizer import plot_bar_chart, plot_heatmap
 from kmer_index import build_index_from_database, get_candidate_sequences
+from parallel import alignment_similarities, edit_similarities, warm_up
 
 app = Flask(__name__)
 
 # ── Startup ──
-print("Loading JASPAR motifs...")
-BIO_MOTIFS = load_jaspar_motifs()
-print(f"Loaded {len(BIO_MOTIFS)} motif models.")
+# Scoring worker processes (see similarity/parallel.py) re-import this file
+# on Windows. They never scan motifs, so only the main process loads JASPAR.
+if multiprocessing.parent_process() is None:
+    print("Loading JASPAR motifs...")
+    BIO_MOTIFS = load_jaspar_motifs()
+    print(f"Loaded {len(BIO_MOTIFS)} motif models.")
+else:
+    BIO_MOTIFS = []
 
 
 # ── Helpers ──
@@ -94,8 +102,11 @@ def save_recent_search(query_label, seq_mode, metrics, result_count):
             'time':    time.strftime('%Y-%m-%d %H:%M'),
         }
 
-        # Remove duplicate query if exists
-        searches = [s for s in searches if s['query'] != query_label]
+        # Remove an earlier search for the same query in the same mode
+        searches = [
+            s for s in searches
+            if not (s['query'] == query_label and s.get('mode') == seq_mode)
+        ]
         searches.insert(0, entry)
         searches = searches[:20]  # keep last 20
 
@@ -117,11 +128,16 @@ def load_recent_searches():
     return []
 
 
-def generate_charts(results, query_label, all_seqs, promoter_tfs):
+def generate_charts(results, query_label, all_seqs, promoter_tfs, seq_mode='protein'):
     """Generate bar chart and heatmaps after a search."""
     try:
         os.makedirs(RESULTS_DIR, exist_ok=True)
         plot_bar_chart(results, query_label, output_dir=RESULTS_DIR)
+        # Heatmaps compare every database gene with every other and do not
+        # depend on the query. They are protein-only: on full-length DNA the
+        # pure-Python edit distance heatmap would run for hours.
+        if seq_mode != 'protein':
+            return
         plot_heatmap(all_seqs, lambda a, b: kmer_similarity(a, b, k=KMER_K),
                      "K-mer (k=3)", query_label, output_dir=RESULTS_DIR)
         plot_heatmap(all_seqs, edit_distance_similarity,
@@ -147,7 +163,9 @@ def index():
     return render_template(
         'search.html',
         gap_costs=BLOSUM62_GAP_COSTS,
-        default_gap_cost=DEFAULT_GAP_COST
+        default_gap_cost=DEFAULT_GAP_COST,
+        kmer_k=KMER_K,
+        kmer_k_dna=KMER_K_DNA
     )
 
 
@@ -248,7 +266,7 @@ def api_search():
     data = request.json
     input_type = data.get('input_type', 'gene_name')
     fetch_type = data.get('fetch_type', 'protein')   # 'protein' or 'dna'
-    seq_mode = data.get('seq_mode', 'protein')      # what to search against
+    requested_mode = data.get('seq_mode')            # 'protein' or 'dna' (search tab)
     metrics = data.get('metrics', ['blosum'])
     top_n = int(data.get('top_n', 10))
 
@@ -277,27 +295,55 @@ def api_search():
         raw = data.get('sequence', '').strip()
         lines = [l.strip() for l in raw.splitlines() if l.strip()]
         if lines and lines[0].startswith('>'):
-            isoform_id = lines[0][1:].split()[0]
+            # Header ">LABEL [ISOFORM ...]". A gene-symbol label (e.g. ">TP53")
+            # lets the motif metric look up the query's promoter.
+            header = lines[0][1:].split()
+            query_label = header[0] if header else 'custom_sequence'
+            isoform_id = header[1] if len(header) > 1 else query_label
             query_seq = ''.join(lines[1:]).upper().replace(' ', '')
-            query_label = isoform_id
         else:
             query_seq = ''.join(lines).upper().replace(' ', '')
             isoform_id = 'custom'
             query_label = 'custom_sequence'
 
-        # Auto-detect sequence type
-        dna_chars = set(query_seq) - set('ATGCN')
-        if dna_chars:
-            actual_mode = 'protein'
-            if not all(c in VALID_AA for c in query_seq):
-                return jsonify({'error': 'Invalid sequence — unrecognized characters'}), 400
-        else:
+        if not query_seq:
+            return jsonify({'error': 'The sequence is empty.'}), 400
+
+        if requested_mode == 'dna':
+            # Nucleotide tab: only nucleotide letters are allowed
+            bad = sorted(set(query_seq) - set('ACGTN'))
+            if bad:
+                return jsonify({'error': (
+                    'Nucleotide search accepts only A, C, G, T and N '
+                    f"(found {', '.join(bad[:8])}). Use the Protein tab for amino-acid sequences."
+                )}), 400
             actual_mode = 'dna'
+        elif requested_mode == 'protein':
+            # Protein tab: any amino-acid letters, even if they look like DNA
+            if not all(c in VALID_AA for c in query_seq):
+                return jsonify({'error': 'Invalid protein sequence: unrecognized characters.'}), 400
+            actual_mode = 'protein'
+        else:
+            # No tab given (older callers): auto-detect the sequence type
+            dna_chars = set(query_seq) - set('ATGCN')
+            if dna_chars:
+                actual_mode = 'protein'
+                if not all(c in VALID_AA for c in query_seq):
+                    return jsonify({'error': 'Invalid sequence — unrecognized characters'}), 400
+            else:
+                actual_mode = 'dna'
 
     # ── Load DB sequences ──
     db = GeneDatabase(db_path=DB_PATH)
     all_seqs = db.get_all_sequences_with_isoform(actual_mode)
     db.close()
+
+    # Ensembl genomic gene sequences (ENSG..., introns included) are a median
+    # of ~44 kb, up to ~360 kb: about 80% of nucleotide alignment time while
+    # not being comparable to mRNA queries. Leave them out unless asked for.
+    include_genomic = bool(data.get('include_genomic', False))
+    if actual_mode == 'dna' and not include_genomic:
+        all_seqs = [s for s in all_seqs if not s[1].startswith('ENSG')]
 
     if not all_seqs:
         return jsonify({'error': f'No {actual_mode} sequences found in database.'}), 400
@@ -325,24 +371,29 @@ def api_search():
             promoter_tfs[symbol] = get_promoter_tfs(symbol)
 
     # ── Run metrics ──
+    kmer_k = KMER_K_DNA if actual_mode == 'dna' else KMER_K
+
+    # The slow pairwise metrics run across CPU cores (similarity/parallel.py)
+    local_seqs = [seq for _, _, seq in candidate_seqs]
+    align_scores = (
+        alignment_similarities(query_seq, local_seqs, actual_mode, gap_cost)
+        if 'blosum' in metrics else None
+    )
+    edit_scores = edit_similarities(query_seq, local_seqs) if 'edit' in metrics else None
+
     results = []
-    for symbol, iso_id, local_seq in candidate_seqs:
+    for n, (symbol, iso_id, local_seq) in enumerate(candidate_seqs):
         row = {'gene': symbol, 'isoform': iso_id, 'scores': {}}
 
-        if 'blosum' in metrics:
-            if actual_mode == 'protein':
-                s = blosum_similarity(query_seq, local_seq, aligner=protein_aligner)
-            else:
-                s = dna_similarity(query_seq, local_seq)
-            row['scores']['blosum'] = round(s, 4)
+        if align_scores is not None:
+            row['scores']['blosum'] = round(align_scores[n], 4)
 
         if 'kmer' in metrics:
-            s = kmer_similarity(query_seq, local_seq, k=KMER_K)
+            s = kmer_similarity(query_seq, local_seq, k=kmer_k)
             row['scores']['kmer'] = round(s, 4)
 
-        if 'edit' in metrics:
-            s = edit_distance_similarity(query_seq, local_seq)
-            row['scores']['edit'] = round(s, 4)
+        if edit_scores is not None:
+            row['scores']['edit'] = round(edit_scores[n], 4)
 
         if 'motif' in metrics:
             s = jaccard_motif_similarity(query_tfs, promoter_tfs.get(symbol, set()))
@@ -365,7 +416,7 @@ def api_search():
     # ── Generate charts in background ──
     threading.Thread(
         target=generate_charts,
-        args=(results[:15], query_label, all_seqs, promoter_tfs),
+        args=(results[:15], query_label, all_seqs, promoter_tfs, actual_mode),
         daemon=True
     ).start()
 
@@ -387,7 +438,9 @@ def api_search():
         'query_length':   len(query_seq),
         'seq_mode':       actual_mode,
         'gap_costs':      list(gap_cost) if actual_mode == 'protein' else None,
+        'kmer_k':         kmer_k,
         'total_compared': len(all_seqs),
+        'include_genomic': include_genomic if actual_mode == 'dna' else None,
         'results':        results[:top_n],
         'alignment':      alignment_text,
         'best_non_self':  non_self[0] if non_self else None
@@ -600,4 +653,10 @@ def api_benchmark():
 
 if __name__ == '__main__':
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    app.run(debug=True, port=5000)
+    # In debug mode Flask runs the server in a reloader child process
+    # (WERKZEUG_RUN_MAIN=true); only that process serves searches, so only
+    # it starts the scoring workers. Runs in the background so start-up is
+    # not delayed.
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        threading.Thread(target=warm_up, daemon=True).start()
+    app.run(debug=True, port=int(os.environ.get('PORT', 5000)))

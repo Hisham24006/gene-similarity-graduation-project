@@ -34,7 +34,8 @@ RECENT_SEARCHES_PATH = os.path.join(DATA_DIR, 'recent_searches.json')
 ENTREZ_EMAIL = os.environ.get("ENTREZ_EMAIL", "hishamalsaadi06@gmail.com")
 Entrez.email = ENTREZ_EMAIL
 
-KMER_K = 3
+KMER_K = 3      # protein k-mers (20^3 = 8,000 possible 3-mers)
+KMER_K_DNA = 7  # nucleotide k-mers (4^7 = 16,384 possible; 4^3 = 64 is too few)
 PROMOTER_BP = 1000
 PSEUDOCOUNT = 0.5
 SCORE_THRESHOLD_FRACTION = 0.80
