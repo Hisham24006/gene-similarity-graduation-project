@@ -138,7 +138,7 @@ def generate_charts(results, query_label, all_seqs, promoter_tfs, seq_mode='prot
         # Heatmaps compare every database gene with every other and do not
         # depend on the query. They are protein-only: on full-length DNA the
         # pure-Python edit distance heatmap would run for hours.
-        if seq_mode != 'protein':
+        if True:
             return
         plot_heatmap(all_seqs, lambda a, b: kmer_similarity(a, b, k=KMER_K),
                      "K-mer (k=3)", query_label, output_dir=RESULTS_DIR)
