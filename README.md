@@ -2,7 +2,7 @@
 
 A bioinformatics tool for finding similar genes using multiple similarity metrics, built as a junior graduation project at the University of Sharjah.
 
-Given a gene of interest, the system searches a local database of 60 human genes and ranks them by similarity using four complementary metrics — from fast alignment-free methods to biologically rich motif-based comparison. A Flask web application provides an interactive interface for all features.
+Given a gene of interest, the system searches a local database of 20,000 human genes and ranks them by similarity using four complementary metrics — from fast alignment-free methods to biologically rich motif-based comparison. A Flask web application provides an interactive interface for all features.
 
 ---
 
@@ -19,7 +19,7 @@ gene-similarity-graduation-project/
 ├── database/
 │   ├── build_db.py               # Fetches sequences and builds gene_vault.db
 │   ├── database_manager.py       # SQLite read/write interface
-│   └── gene_vault.db             # Local gene database (60 genes, 3 sources)
+│   └── gene_vault.db             # Local gene database (20,000 genes, 3 sources)
 ├── similarity/
 │   ├── prototype.py              # Command-line similarity search interface
 │   ├── metrics.py                # K-mer and edit distance implementations
@@ -43,7 +43,7 @@ gene-similarity-graduation-project/
 
 ## Database
 
-The local database (`gene_vault.db`) contains **60 human genes** across four biological categories:
+The local database (`gene_vault.db`) contains **20,000 human genes** across four biological categories:
 
 | Category | Examples |
 |---|---|
@@ -95,7 +95,7 @@ Then open your browser to `http://localhost:5000`
 The web app has four pages:
 
 - **Search** — Enter a gene name or paste a sequence (protein or DNA). Toggle which metrics to run, set result count, and view ranked results with color-coded score bars. Includes a filter box to search within results and a recent searches panel.
-- **Database** — Browse all 60 genes with isoform counts, descriptions, and a sequence viewer that shows full FASTA sequences with a copy button.
+- **Database** — Browse all 20,000 genes with isoform counts, descriptions, and a sequence viewer that shows full FASTA sequences with a copy button.
 - **Visualizations** — View bar charts and heatmaps generated automatically after each search.
 - **Benchmark** — Run a speed and accuracy comparison across all four metrics on a configurable number of random gene pairs.
 
