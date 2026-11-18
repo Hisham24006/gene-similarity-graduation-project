@@ -404,7 +404,7 @@ def api_search():
     query_tfs = set()
     if 'motif' in metrics:
         query_tfs = get_promoter_tfs(query_label) if query_label != 'custom_sequence' else set()
-        gene_symbols = list(set(s for s, i, _ in all_seqs))
+        gene_symbols = list(set(s for s, i, _ in candidate_seqs))
         for symbol in gene_symbols:
             promoter_tfs[symbol] = get_promoter_tfs(symbol)
 
@@ -454,7 +454,7 @@ def api_search():
     # ── Generate charts in background ──
     threading.Thread(
         target=generate_charts,
-        args=(results[:15], query_label, all_seqs, promoter_tfs, actual_mode),
+        args=(results[:15], query_label, candidate_seqs[:30], promoter_tfs, actual_mode),
         daemon=True
     ).start()
 
