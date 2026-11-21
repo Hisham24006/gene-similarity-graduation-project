@@ -59,7 +59,7 @@ from fetcher import (
     detect_accession
 )
 from visualizer import plot_bar_chart, plot_heatmap
-from kmer_index import build_index_from_database, get_candidate_sequences
+from kmer_index import get_candidate_sequences, get_search_index
 from parallel import alignment_similarities, edit_similarities, warm_up
 
 app = Flask(__name__)
@@ -80,6 +80,18 @@ else:
 def get_promoter_tfs(symbol):
     promoter = fetch_promoter(symbol)
     return cached_scan_motifs(symbol, promoter, BIO_MOTIFS) if promoter else set()
+
+
+def warm_up_index():
+    """Builds the protein k-mer index at start-up so the first search is fast."""
+    try:
+        db = GeneDatabase(db_path=DB_PATH)
+        rows = db.get_all_sequences_with_isoform('protein')
+        db.close()
+        get_search_index(rows, KMER_K)
+        print("K-mer index ready.")
+    except Exception as e:
+        print(f"K-mer index warm-up failed ({e}); the first search will build it.")
 
 
 def image_to_base64(path):
@@ -387,17 +399,18 @@ def api_search():
     if not all_seqs:
         return jsonify({'error': f'No {actual_mode} sequences found in database.'}), 400
 
-    # Apply k-mer candidate filtering to protein searches only
+    # Apply k-mer candidate filtering to protein searches only. The k-mer
+    # index is built once and reused (see kmer_index.get_search_index), and
+    # candidates are ranked by Jaccard so very long proteins do not crowd out
+    # the real relatives.
     candidate_seqs = all_seqs
 
     if actual_mode == 'protein':
-        kmer_index = build_index_from_database(all_seqs, k=KMER_K)
         candidate_seqs = get_candidate_sequences(
             query_seq,
             all_seqs,
             k=KMER_K,
-            top_n=80,
-            index=kmer_index
+            top_n=80
         )
 
     # ── Motif TF sets ──
@@ -405,9 +418,19 @@ def api_search():
     query_tfs = set()
     if 'motif' in metrics:
         query_tfs = get_promoter_tfs(query_label) if query_label != 'custom_sequence' else set()
+        # Only the query gene may be fetched from the internet (one request).
+        # Database genes use the saved TF cache only: fetching ~80 promoters
+        # one by one from Ensembl made the search hang for minutes. Genes
+        # without cached TF data get an empty set (Motif score 0).
+        tf_cache = {}
+        try:
+            with open(TF_CACHE_PATH, 'r') as f:
+                tf_cache = json.load(f)
+        except (OSError, ValueError):
+            pass
         gene_symbols = list(set(s for s, i, _ in candidate_seqs))
         for symbol in gene_symbols:
-            promoter_tfs[symbol] = get_promoter_tfs(symbol)
+            promoter_tfs[symbol] = set(tf_cache.get(symbol, []))
 
     # ── Run metrics ──
     kmer_k = KMER_K_DNA if actual_mode == 'dna' else KMER_K
@@ -727,4 +750,5 @@ if __name__ == '__main__':
     # not delayed.
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
         threading.Thread(target=warm_up, daemon=True).start()
+        threading.Thread(target=warm_up_index, daemon=True).start()
     app.run(debug=True, port=int(os.environ.get('PORT', 5000)))
