@@ -33,7 +33,8 @@ from config import (
     VALID_AA,
     VALID_DNA,
     BLOSUM62_GAP_COSTS,
-    DEFAULT_GAP_COST
+    DEFAULT_GAP_COST,
+    TF_CACHE_PATH
 )
 from database_manager import GeneDatabase
 from metrics import (
@@ -588,6 +589,9 @@ def get_cpu_info():
     }
 
 
+BENCH_MAX_LEN = 1000  # longest protein (amino acids) used in the benchmark
+
+
 @app.route('/api/benchmark', methods=['POST'])
 def api_benchmark():
     n_pairs = int(request.json.get('n_pairs', 20))
@@ -601,12 +605,28 @@ def api_benchmark():
         if symbol not in seen:
             seen[symbol] = seq
 
-    genes = list(seen.keys())
-    all_pairs = [(a, b) for i, a in enumerate(genes) for b in genes[i + 1:]]
-    random.seed(42)
-    pairs = random.sample(all_pairs, min(n_pairs, len(all_pairs)))
+    # The database holds ~20,000 genes, so we must NOT build a list of every
+    # possible pair (about 200 million) or look up TF data for every gene.
+    # Pick the random pairs directly, and skip very long proteins because the
+    # pure-Python edit distance would take minutes on them.
+    genes = sorted(s for s, seq in seen.items() if len(seq) <= BENCH_MAX_LEN)
+    rng = random.Random(42)
+    n_wanted = min(n_pairs, len(genes) * (len(genes) - 1) // 2)
+    chosen = set()
+    while len(chosen) < n_wanted:
+        a, b = rng.sample(genes, 2)
+        chosen.add((a, b) if a < b else (b, a))
+    pairs = sorted(chosen)
 
-    tf_map = {s: get_promoter_tfs(s) for s in genes}
+    # Motif data: only read what is already cached (no internet requests).
+    # Genes without cached TF data are left out of the Motif correlation.
+    tf_cache = {}
+    try:
+        with open(TF_CACHE_PATH, 'r') as f:
+            tf_cache = json.load(f)
+    except (OSError, ValueError):
+        pass
+    tf_map = {s: set(tf_cache[s]) for s in {g for p in pairs for g in p} if s in tf_cache}
 
     metric_data = {
         'BLOSUM62':       {'times': [], 'cpu_times': [], 'scores': []},
@@ -665,7 +685,17 @@ def api_benchmark():
         times = np.array(d['times'])
         cpu_times = np.array(d['cpu_times'])
         scores = np.array(d['scores'])
-        corr = float(np.corrcoef(blosum_scores, scores)[0, 1]) if name != 'BLOSUM62' else 1.0
+        if name == 'BLOSUM62':
+            corr = 1.0
+        else:
+            idx = list(range(len(pairs)))
+            if name == 'Motif (JASPAR)':
+                idx = [i for i, (a, b) in enumerate(pairs) if a in tf_map and b in tf_map]
+            corr = 0.0
+            if len(idx) >= 3:
+                corr = float(np.corrcoef(blosum_scores[idx], scores[idx])[0, 1])
+            if corr != corr:  # NaN (constant scores) cannot be sent as JSON
+                corr = 0.0
         summary.append({
             'metric': name,
             'avg_ms': round(float(np.mean(times)), 3),
