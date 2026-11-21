@@ -15,7 +15,7 @@ import platform
 import psutil
 
 import numpy as np
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect
 
 # ── Dynamic Path Setup ──
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -174,6 +174,14 @@ def generate_charts(results, query_label, all_seqs, promoter_tfs, seq_mode='prot
 # ── Page routes ──
 
 @app.route('/')
+def home():
+    """Landing page. Older links such as /?from=fetch or /?mode=dna still open Search."""
+    if request.query_string:
+        return redirect('/search?' + request.query_string.decode('utf-8', 'ignore'))
+    return render_template('home.html')
+
+
+@app.route('/search')
 def index():
     return render_template(
         'search.html',

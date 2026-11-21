@@ -1,230 +1,795 @@
 {% extends "base.html" %}
-{% block title %}Search — GeneSim{% endblock %}
-{% block page_title %}Similarity Search{% endblock %}
-{% block page_sub %}Compare a protein or nucleotide sequence against 20,000 human genes using multiple metrics{% endblock %}
+{% block title %}Similarity search · GeneSim{% endblock %}
+{% block body_class %}page-search{% endblock %}
+
+{% block head %}
+<style>
+/* ==========================================================================
+   Search page
+   ========================================================================== */
+
+/* ---------- Hero ---------- */
+.hero { padding: 40px 0 26px; }
+.hero-inner { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; }
+.hero .page-title { font-size: 38px; }
+.hero .page-sub { font-size: 15.5px; max-width: 60ch; }
+
+.mode-switch {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px;
+  border-radius: 14px; background: #E9EDF3; border: 1px solid #E1E6EE; flex-shrink: 0;
+}
+.mode-switch button {
+  display: grid; gap: 3px; text-align: left; min-width: 178px; padding: 10px 16px 11px;
+  border-radius: 10px; color: var(--ink-3);
+  transition: background .18s var(--ease), box-shadow .18s var(--ease), color .18s var(--ease);
+}
+.mode-switch button:hover { color: var(--ink); }
+.mode-switch button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(13,22,48,.08), 0 0 0 1px rgba(13,22,48,.04); }
+.ms-title { font-size: 14px; font-weight: 600; }
+.ms-glyph { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; opacity: .55; transition: opacity .18s; }
+.mode-switch button[aria-selected="true"] .ms-glyph { opacity: 1; }
+
+/* ---------- Composer ---------- */
+.composer { overflow: hidden; }
+.chromatogram { height: 40px; border-bottom: 1px solid var(--line); background: var(--surface-sunk); position: relative; overflow: hidden; }
+.chromatogram svg { width: 100%; height: 100%; }
+.chromatogram path { transition: opacity .35s var(--ease); vector-effect: non-scaling-stroke; }
+.chromatogram .off { opacity: .09; }
+
+.composer-body { display: grid; grid-template-columns: minmax(0, 1fr) 392px; }
+.editor-col { padding: 22px 24px 20px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.editor-col .editor { flex: 1 1 auto; }
+.config-col { border-left: 1px solid var(--line); background: #FBFCFD; display: flex; flex-direction: column; }
+
+.editor-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.editor-tools { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
+.editor-tools .sep { width: 1px; height: 18px; background: var(--line); margin: 0 6px; }
+
+/* The sequence editor: a transparent textarea over a coloured mirror */
+.editor {
+  position: relative; min-height: 340px; border-radius: var(--r-md);
+  background: var(--surface); border: 1px solid var(--line-2); box-shadow: var(--shadow-1);
+  transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
+  overflow: hidden;
+}
+.editor:hover { border-color: #C3CBD8; }
+.editor.focused { border-color: var(--accent); box-shadow: var(--focus); }
+.editor.dragging { border-color: var(--accent); border-style: dashed; background: var(--accent-wash); }
+.editor-mirror, .editor textarea {
+  position: absolute; inset: 0; margin: 0; width: 100%; height: 100%;
+  padding: 16px 18px; border: 0;
+  font-family: var(--font-mono); font-size: 13.5px; line-height: 1.75; letter-spacing: .04em;
+  white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all;
+  overflow-y: scroll; scrollbar-gutter: stable; tab-size: 4;
+  font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0;
+}
+.editor-mirror { color: var(--ink); pointer-events: none; overflow: hidden; scrollbar-color: transparent transparent; }
+.editor-mirror::-webkit-scrollbar-thumb { background: transparent; }
+.editor textarea { background: transparent; color: transparent; caret-color: var(--ink); resize: none; outline: none; z-index: 1; }
+.editor textarea::selection { background: rgba(58,75,212,.20); color: transparent; }
+.editor-mirror .h { color: var(--accent); font-weight: 500; }
+.editor-mirror .x { color: var(--err); background: var(--err-wash); border-radius: 2px; text-decoration: underline wavy rgba(184,50,28,.6); text-underline-offset: 3px; }
+/* Residue classes (muted ClustalX-inspired palette) */
+.colored .r-hyd { color: #2F5FC4; }
+.colored .r-pos { color: #C2352E; }
+.colored .r-neg { color: #A3329A; }
+.colored .r-pol { color: #11805A; }
+.colored .r-cys { color: #C4600E; }
+.colored .r-gly { color: #A87406; }
+.colored .r-pro { color: #7B6C0C; }
+.colored .r-aro { color: #0A8590; }
+.colored .n-a { color: #0A8A7C; }
+.colored .n-c { color: #4F41CF; }
+.colored .n-g { color: #B07208; }
+.colored .n-t { color: #D2472A; }
+.colored .n-n { color: var(--ink-4); }
+
+/* Empty editor guide */
+.editor-empty {
+  position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  display: flex; flex-direction: column; justify-content: center; align-items: flex-start;
+  padding: 28px 30px; gap: 16px;
+}
+.editor-empty .ee-title { font-size: 16px; font-weight: 600; color: var(--ink); }
+.editor-empty .ee-text { font-size: 13.5px; color: var(--ink-3); max-width: 54ch; line-height: 1.55; }
+.editor-empty .ee-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; pointer-events: auto; }
+.editor-empty .ee-row .hint { margin-right: 4px; }
+.chip-btn {
+  height: 30px; padding: 0 11px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--surface);
+  font-size: 12.5px; font-weight: 500; color: var(--ink-2); display: inline-flex; align-items: center; gap: 7px;
+  box-shadow: var(--shadow-1); transition: border-color .15s, background .15s, color .15s;
+}
+.chip-btn:hover { border-color: var(--accent-line); background: var(--accent-wash); color: var(--ink); }
+.chip-btn.mono { font-family: var(--font-mono); font-size: 12px; letter-spacing: .02em; }
+.chip-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+
+.editor-status { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 26px; font-size: 12.5px; }
+.status-left { color: var(--ink-3); display: flex; align-items: center; gap: 8px; min-width: 0; }
+.status-left .ok { color: var(--ok); font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+.status-left .ok::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.status-left .bad { color: var(--err); font-weight: 500; }
+.status-left .soft { color: var(--warn); font-weight: 500; }
+.status-left a { font-weight: 600; }
+.status-right { display: flex; align-items: center; gap: 14px; color: var(--ink-3); flex-shrink: 0; }
+.len-badge { font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.label-chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: var(--r-xs); background: var(--accent-wash); color: var(--info); font-family: var(--font-mono); font-size: 11.5px; }
+.color-toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+
+/* ---------- Config column ---------- */
+.cfg-section { padding: 20px 22px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+.cfg-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+
+.channels { display: grid; gap: 8px; }
+.channel {
+  --c: var(--ink-3); --cw: var(--surface-sunk);
+  position: relative; display: grid; grid-template-columns: 20px minmax(0,1fr) auto; gap: 12px; align-items: start;
+  padding: 11px 12px 11px 12px; border-radius: 10px; cursor: pointer; user-select: none;
+  background: var(--surface); border: 1px solid var(--line);
+  transition: border-color .18s var(--ease), background .18s var(--ease), box-shadow .18s var(--ease);
+}
+.channel:hover { border-color: var(--line-2); }
+.channel input { position: absolute; opacity: 0; pointer-events: none; }
+.channel .ch-check {
+  width: 18px; height: 18px; margin-top: 1px; border-radius: 5px; border: 1.5px solid #C5CDDA; background: var(--surface);
+  display: grid; place-items: center; transition: background .15s, border-color .15s;
+}
+.channel .ch-check svg { width: 12px; height: 12px; stroke: #fff; fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; opacity: 0; transform: scale(.6); transition: opacity .15s, transform .15s; }
+.channel.on { border-color: color-mix(in srgb, var(--c) 45%, white); background: var(--cw); box-shadow: inset 3px 0 0 var(--c); }
+.channel.on .ch-check { background: var(--c); border-color: var(--c); }
+.channel.on .ch-check svg { opacity: 1; transform: none; }
+.channel input:focus-visible ~ .ch-check { box-shadow: var(--focus); }
+.ch-name { font-size: 13.5px; font-weight: 600; color: var(--ink); display: block; line-height: 1.35; }
+.ch-desc { font-size: 12px; color: var(--ink-3); display: block; margin-top: 2px; line-height: 1.45; }
+.ch-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; padding-top: 2px; }
+.speed { display: inline-flex; gap: 2px; align-items: flex-end; height: 12px; }
+.speed i { width: 3px; border-radius: 1px; background: #D3D9E3; }
+.speed i:nth-child(1) { height: 5px; } .speed i:nth-child(2) { height: 8px; } .speed i:nth-child(3) { height: 11px; }
+.speed[data-v="1"] i:nth-child(-n+1), .speed[data-v="2"] i:nth-child(-n+2), .speed[data-v="3"] i:nth-child(-n+3) { background: var(--ink-3); }
+.channel.on .speed[data-v] i:nth-child(-n+1) { background: var(--c); }
+.channel.on .speed[data-v="2"] i:nth-child(-n+2), .channel.on .speed[data-v="3"] i:nth-child(-n+3) { background: var(--c); }
+.speed-label { font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+
+.rank-group { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; padding: 3px; border-radius: 10px; background: #E9EDF3; border: 1px solid #E1E6EE; }
+.rank-group label { position: relative; cursor: pointer; }
+.rank-group input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.rank-group span {
+  display: flex; align-items: center; justify-content: center; gap: 6px; height: 30px; border-radius: 7px;
+  font-size: 12.5px; font-weight: 500; color: var(--ink-3); transition: background .15s, color .15s, box-shadow .15s;
+}
+.rank-group span::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--c); opacity: .45; }
+.rank-group label:hover span { color: var(--ink); }
+.rank-group input:checked + span { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(13,22,48,.10), 0 0 0 1px rgba(13,22,48,.04); }
+.rank-group input:checked + span::before { opacity: 1; }
+.rank-group input:focus-visible + span { box-shadow: var(--focus); }
+.rank-group .not-running span { color: var(--ink-4); }
+
+.slider-row { display: grid; grid-template-columns: 1fr 44px; gap: 14px; align-items: center; }
+.slider-val { height: 30px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--surface); display: grid; place-items: center; font-weight: 600; font-variant-numeric: tabular-nums; font-size: 13px; }
+.switch-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 14px; align-items: start; cursor: pointer; }
+.switch-row .t { font-size: 13px; font-weight: 500; color: var(--ink); }
+.score-spec { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; background: var(--surface); }
+.score-spec div { padding: 8px 10px; border-right: 1px solid var(--line); }
+.score-spec div:last-child { border-right: 0; }
+.score-spec b { display: block; font-family: var(--font-mono); font-size: 13px; font-weight: 500; color: var(--ink); }
+.score-spec small { font-size: 11px; color: var(--ink-3); }
+
+.cfg-run { padding: 20px 22px 22px; margin-top: auto; display: grid; gap: 10px; }
+.cfg-run .btn { width: 100%; }
+.cfg-run .hint { text-align: center; }
+.run-btn .kbd { margin-left: 4px; }
+
+/* ---------- Composer summary (collapsed state) ---------- */
+.composer-summary { display: none; align-items: center; gap: 20px; padding: 14px 18px 14px 22px; }
+.composer.collapsed .composer-body { display: none; }
+.composer.collapsed .composer-summary { display: flex; }
+.cs-main { display: flex; align-items: center; gap: 14px; min-width: 0; flex: 1; }
+.cs-label { font-family: var(--font-serif); font-size: 19px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.cs-meta { display: flex; align-items: center; gap: 14px; color: var(--ink-3); font-size: 12.5px; min-width: 0; flex-wrap: wrap; }
+.cs-seq { font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; letter-spacing: .04em; }
+.dots { display: inline-flex; gap: 4px; }
+.dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+.cs-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* ---------- Recent searches ---------- */
+.recent { margin-top: 14px; display: flex; align-items: center; gap: 14px; min-height: 40px; }
+.recent-title { font-size: 13px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+.recent-list { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px; flex: 1; scrollbar-width: thin; }
+.recent-item {
+  display: inline-flex; align-items: center; gap: 10px; height: 34px; padding: 0 12px; flex-shrink: 0;
+  border-radius: 999px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow-1);
+  font-size: 12.5px; color: var(--ink-2); transition: border-color .15s, background .15s;
+}
+.recent-item:hover { border-color: var(--line-2); background: var(--surface-hover); }
+.recent-item b { font-weight: 600; color: var(--ink); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-item .m { font-size: 11.5px; color: var(--ink-3); }
+.recent-item .dots i { width: 6px; height: 6px; }
+.recent-empty { font-size: 12.5px; color: var(--ink-3); }
+
+/* ---------- Results ---------- */
+.results-area { margin-top: 30px; }
+.empty-results {
+  border: 1px dashed var(--line-2); border-radius: var(--r-lg); padding: 28px 30px;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 32px; align-items: center;
+}
+.empty-results h3 { font-size: 16px; font-weight: 600; color: var(--ink); }
+.empty-results p { margin-top: 6px; font-size: 13.5px; color: var(--ink-3); line-height: 1.55; }
+.metric-legend { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+.metric-legend div { border-top: 2px solid var(--c); padding-top: 10px; }
+.metric-legend b { font-size: 13px; font-weight: 600; color: var(--ink); display: block; }
+.metric-legend span { font-size: 12px; color: var(--ink-3); line-height: 1.5; display: block; margin-top: 3px; }
+
+.res-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 16px; }
+.res-kicker { font-size: 13px; color: var(--ink-3); display: flex; align-items: center; gap: 8px; }
+.res-kicker .rank-pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: var(--r-xs); background: var(--surface); border: 1px solid var(--line); color: var(--ink-2); font-weight: 500; font-size: 12px; }
+.res-kicker .rank-pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+.res-title { margin-top: 6px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.res-title h2 { font-family: var(--font-serif); font-size: 32px; font-weight: 500; letter-spacing: -.015em; line-height: 1.1; color: var(--ink); word-break: break-all; }
+.res-title .iso { font-family: var(--font-mono); font-size: 13px; color: var(--ink-3); }
+.res-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin-bottom: 18px; overflow: hidden; }
+.fact { padding: 14px 18px; border-right: 1px solid var(--line); }
+.fact:last-child { border-right: 0; }
+.fact .k { font-size: 12px; color: var(--ink-3); }
+.fact .v { margin-top: 3px; font-size: 18px; font-weight: 600; color: var(--ink); letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fact .v small { font-size: 12.5px; font-weight: 500; color: var(--ink-3); margin-left: 3px; }
+
+.table-panel { overflow: hidden; }
+.table-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px 14px 20px; border-bottom: 1px solid var(--line); }
+.table-toolbar .left { display: flex; align-items: baseline; gap: 10px; }
+.table-toolbar .right { display: flex; align-items: center; gap: 8px; }
+.table-toolbar .input-icon { width: 230px; }
+.table-toolbar .input { height: 34px; }
+.table-scroll { overflow-x: auto; }
+table.results { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
+table.results th {
+  position: sticky; top: 0; z-index: 1;
+  text-align: left; font-size: 12px; font-weight: 500; color: var(--ink-3); white-space: nowrap;
+  padding: 0 16px; height: 40px; background: var(--surface-sunk); border-bottom: 1px solid var(--line);
+}
+table.results th.num-col { width: 56px; padding-left: 20px; }
+table.results th .sort {
+  display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 8px; margin-left: -8px; border-radius: 6px;
+  color: inherit; font-weight: 500; font-size: 12px;
+}
+table.results th .sort:hover { background: #EAEEF4; color: var(--ink); }
+table.results th .sort .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+table.results th .sort svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+table.results th.sorted .sort { color: var(--ink); }
+table.results th.sorted .sort svg { opacity: 1; }
+table.results th.sorted.asc .sort svg { transform: rotate(180deg); }
+table.results td { padding: 0 16px; height: 52px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+table.results tbody tr { cursor: pointer; transition: background .12s; }
+table.results tbody tr:hover td { background: #F7F9FC; }
+table.results tbody tr.selected td { background: var(--accent-wash); }
+table.results tbody tr:last-child td { border-bottom: 0; }
+table.results td.rank { padding-left: 20px; color: var(--ink-4); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+table.results td.ranked, table.results th.ranked { background-color: color-mix(in srgb, var(--cw) 55%, transparent); }
+table.results th.ranked { background-color: color-mix(in srgb, var(--cw) 90%, var(--surface-sunk)); }
+.gene-cell { display: flex; align-items: center; gap: 10px; }
+.gene-sym { font-weight: 600; color: var(--ink); font-size: 14px; letter-spacing: -.005em; }
+.self-tag { height: 20px; font-size: 11px; padding: 0 7px; background: var(--surface-sunk); color: var(--ink-3); }
+tr.is-self .gene-sym { color: var(--ink-3); }
+tr.is-self .score-v { color: var(--ink-3); }
+.iso-cell { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.iso-id { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-2); }
+.src-tag { font-size: 11px; height: 20px; padding: 0 6px; }
+.iso-link { color: var(--ink-4); display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; }
+.iso-link:hover { color: var(--accent); background: var(--accent-wash); }
+.iso-link svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.score { display: grid; grid-template-columns: 54px 88px; gap: 12px; align-items: center; }
+.score-v { font-family: var(--font-mono); font-size: 13px; font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
+.score-track { height: 6px; border-radius: 6px; background: #EBEEF3; overflow: hidden; }
+.score-track i { display: block; height: 100%; border-radius: 6px; background: var(--c); transform-origin: left; animation: grow .6s var(--ease) both; }
+@keyframes grow { from { transform: scaleX(0); } }
+td.chev { width: 40px; color: var(--ink-4); }
+td.chev svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+tbody tr:hover td.chev { color: var(--ink-2); }
+.no-filter { padding: 28px; text-align: center; color: var(--ink-3); font-size: 13px; }
+
+/* ---------- Best match + alignment ---------- */
+.match-panel { margin-top: 20px; overflow: hidden; }
+.match-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; padding: 20px 22px; border-bottom: 1px solid var(--line); align-items: center; }
+.match-kicker { font-size: 12.5px; color: var(--ink-3); }
+.match-title { margin-top: 4px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.match-title .sym { font-family: var(--font-serif); font-size: 26px; font-weight: 600; letter-spacing: -.01em; color: var(--ink); }
+.match-title .iso { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-3); }
+.gauges { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.gauge { min-width: 128px; padding: 10px 12px; border-radius: 10px; background: var(--cw); border: 1px solid color-mix(in srgb, var(--c) 22%, white); }
+.gauge .k { font-size: 11.5px; color: color-mix(in srgb, var(--c) 70%, var(--ink)); font-weight: 500; }
+.gauge .v { font-family: var(--font-mono); font-size: 18px; font-weight: 500; color: var(--ink); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.gauge .bar { height: 4px; border-radius: 4px; background: rgba(255,255,255,.8); margin-top: 6px; overflow: hidden; }
+.gauge .bar i { display: block; height: 100%; background: var(--c); border-radius: 4px; }
+
+.aln-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 22px; flex-wrap: wrap; }
+.aln-stats { display: flex; gap: 22px; flex-wrap: wrap; }
+.aln-stat .k { font-size: 11.5px; color: var(--ink-3); }
+.aln-stat .v { font-size: 14px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.aln-stat .v small { font-weight: 500; color: var(--ink-3); font-size: 12px; margin-left: 4px; }
+.aln-overview { margin: 0 22px; position: relative; cursor: pointer; }
+.aln-overview canvas { width: 100%; height: 34px; border-radius: 6px; }
+.aln-overview .ov-legend { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ink-3); margin-top: 6px; }
+.aln-body { padding: 14px 22px 22px; }
+.aln-view { position: relative; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-sunk); padding: 6px 0; max-height: 560px; overflow: auto; }
+.aln-block { padding: 12px 18px; font-family: var(--font-mono); font-size: 13px; line-height: 1.6; }
+.aln-block + .aln-block { border-top: 1px dashed #E1E6EE; }
+.aln-row { display: grid; grid-template-columns: 76px 56px max-content 56px; gap: 0 12px; align-items: center; justify-content: start; }
+.aln-name { font-family: var(--font-sans); font-size: 12px; font-weight: 600; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; }
+.aln-pos { color: var(--ink-4); font-size: 11.5px; text-align: right; font-variant-numeric: tabular-nums; }
+.aln-pos.end { text-align: left; }
+.aln-seq { letter-spacing: .06em; white-space: pre; }
+.aln-seq .id { color: var(--ink); background: color-mix(in srgb, var(--ch-blosum) 13%, transparent); }
+.aln-seq .mm { color: var(--ch-edit); }
+.aln-seq .gp { color: var(--ink-4); }
+.aln-mid { color: var(--ch-blosum); letter-spacing: .06em; white-space: pre; line-height: 1.1; }
+.aln-mid .mm { color: #D6C7C2; }
+.aln-mid .gp { color: transparent; }
+.aln-raw { margin: 0; padding: 16px 18px; font-family: var(--font-mono); font-size: 12px; line-height: 1.6; color: var(--ink-2); white-space: pre; }
+.aln-more { padding: 12px 18px; text-align: center; border-top: 1px solid var(--line); }
+.aln-legend { display: flex; gap: 16px; margin-top: 10px; font-size: 12px; color: var(--ink-3); flex-wrap: wrap; }
+.aln-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.aln-key { font-family: var(--font-mono); font-size: 13px; font-weight: 400; letter-spacing: .06em; padding: 0 1px; border-radius: 3px; background: var(--surface-sunk); border: 1px solid var(--line); }
+.aln-key .id { color: var(--ink); background: color-mix(in srgb, var(--ch-blosum) 13%, transparent); }
+.aln-key .mm { color: var(--ch-edit); }
+.aln-key .gp { color: var(--ink-4); }
+
+/* ---------- Gene drawer ---------- */
+.drawer-backdrop { position: fixed; inset: 0; z-index: 80; background: rgba(13,22,48,.18); opacity: 0; visibility: hidden; transition: opacity .25s var(--ease), visibility 0s linear .25s; }
+.drawer-backdrop.open { opacity: 1; visibility: visible; transition: opacity .25s var(--ease); }
+.drawer {
+  position: fixed; z-index: 90; top: 0; right: 0; bottom: 0; width: min(480px, 100vw);
+  background: var(--surface); border-left: 1px solid var(--line); box-shadow: var(--shadow-3);
+  transform: translateX(104%); transition: transform .32s var(--ease);
+  display: flex; flex-direction: column;
+}
+.drawer.open { transform: none; }
+.drawer-head { padding: 22px 24px 18px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; }
+.drawer-kicker { font-size: 12.5px; color: var(--ink-3); }
+.drawer-sym { font-family: var(--font-serif); font-size: 32px; font-weight: 600; letter-spacing: -.015em; line-height: 1.1; margin-top: 4px; color: var(--ink); word-break: break-all; }
+.drawer-org { font-size: 13px; color: var(--ink-3); margin-top: 4px; font-style: italic; }
+.drawer-body { flex: 1; overflow-y: auto; padding: 20px 24px 28px; display: flex; flex-direction: column; gap: 22px; }
+.drawer-desc { font-size: 14px; color: var(--ink-2); line-height: 1.6; }
+.drawer-scores { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.drawer-scores .gauge { min-width: 0; }
+.iso-group h4 { font-size: 13px; font-weight: 600; color: var(--ink-2); margin-bottom: 8px; display: flex; justify-content: space-between; }
+.iso-group h4 span { font-weight: 500; color: var(--ink-3); }
+.iso-list { border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.iso-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.iso-row:last-child { border-bottom: 0; }
+.iso-row.current { background: var(--accent-wash); }
+.iso-row .iid { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iso-row .imeta { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+.iso-row .iact { display: flex; gap: 4px; }
+.drawer-foot { padding: 14px 24px; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: flex-end; background: var(--surface-sunk); }
+.skeleton { height: 12px; border-radius: 6px; background: linear-gradient(90deg, #EEF1F5 0, #F6F8FA 50%, #EEF1F5 100%); background-size: 200% 100%; animation: sk 1.2s linear infinite; }
+@keyframes sk { to { background-position: -200% 0; } }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1180px) {
+  .composer-body { grid-template-columns: minmax(0, 1fr) 340px; }
+  .empty-results { grid-template-columns: 1fr; }
+}
+@media (max-width: 960px) {
+  .hero-inner { flex-direction: column; align-items: stretch; }
+  .mode-switch button { min-width: 0; }
+  .composer-body { grid-template-columns: 1fr; }
+  .config-col { border-left: 0; border-top: 1px solid var(--line); }
+  .res-head { flex-direction: column; align-items: flex-start; }
+  .match-head { grid-template-columns: 1fr; }
+  .gauges { justify-content: flex-start; }
+  .metric-legend { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+@media (max-width: 640px) {
+  .hero .page-title { font-size: 30px; }
+  .editor-col { padding: 16px; }
+  .editor-head { flex-direction: column; }
+  .editor-tools { justify-content: flex-start; }
+    .table-toolbar { flex-direction: column; align-items: stretch; }
+  .table-toolbar .input-icon { width: 100%; }
+  .aln-row { grid-template-columns: 52px 40px max-content 40px; gap: 0 8px; }
+  .composer-summary { flex-wrap: wrap; gap: 12px; }
+  .cs-seq { display: none; }
+  .cs-main { flex-wrap: wrap; gap: 8px 12px; }
+  .cs-actions { width: 100%; }
+  .cs-actions .btn { flex: 1; }
+  .fact { border-bottom: 1px solid var(--line); }
+}
+</style>
+{% endblock %}
+
+{% block page_header %}
+<section class="hero">
+  <div class="wrap hero-inner">
+    <div>
+      <h1 class="page-title">Similarity search</h1>
+      <p class="page-sub">Compare a protein or nucleotide sequence against 20,000 human genes. Each metric measures similarity in its own way, so run one or combine several and rank by the one that answers your question.</p>
+    </div>
+    <div class="mode-switch" role="tablist" aria-label="Search type">
+      <button role="tab" id="tab-protein" aria-selected="true" aria-controls="composer" onclick="switchMode('protein')">
+        <span class="ms-title">Protein</span>
+        <span class="ms-glyph colored"><span class="r-hyd">M</span><span class="r-neg">EE</span><span class="r-pro">P</span><span class="r-pol">QS</span><span class="r-neg">D</span><span class="r-pro">P</span><span class="r-pol">S</span><span class="r-hyd">V</span></span>
+      </button>
+      <button role="tab" id="tab-dna" aria-selected="false" aria-controls="composer" onclick="switchMode('dna')">
+        <span class="ms-title">Nucleotide</span>
+        <span class="ms-glyph colored"><span class="n-a">A</span><span class="n-t">T</span><span class="n-g">GG</span><span class="n-a">A</span><span class="n-g">GG</span><span class="n-a">A</span><span class="n-g">G</span><span class="n-c">C</span></span>
+      </button>
+    </div>
+  </div>
+</section>
+{% endblock %}
 
 {% block content %}
 
-<!-- Search type tabs -->
-<div class="tab-bar" role="tablist">
-    <button class="tab-btn active" id="tab-protein" role="tab" aria-selected="true" onclick="switchMode('protein')">
-        🧪 Protein Search
-    </button>
-    <button class="tab-btn" id="tab-dna" role="tab" aria-selected="false" onclick="switchMode('dna')">
-        🧬 Nucleotide Search
-    </button>
-</div>
+<!-- ======================= Composer ======================= -->
+<section class="panel composer" id="composer" aria-label="Query and settings">
 
-<div style="display:grid; grid-template-columns:360px 1fr; gap:20px; align-items:start;">
+  <div class="chromatogram" aria-hidden="true">
+    <svg id="chromatogram" viewBox="0 0 1200 40" preserveAspectRatio="none"></svg>
+  </div>
 
-    <!-- Left: Form -->
-    <div>
-        <div class="card">
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-                <div class="card-title" style="margin-bottom:0" id="query-title">Protein Query</div>
-                <a href="/fetch" style="font-size:12px; color:var(--accent); text-decoration:none; font-weight:500;">
-                    📥 Fetch sequence →
-                </a>
-            </div>
+  <!-- Collapsed summary, shown after a search -->
+  <div class="composer-summary" id="composer-summary">
+    <div class="cs-main">
+      <span class="tag" id="cs-mode">Protein</span>
+      <span class="cs-label" id="cs-label">Query</span>
+      <span class="cs-seq" id="cs-seq"></span>
+      <span class="cs-meta"><span id="cs-len" class="num"></span><span class="dots" id="cs-dots"></span></span>
+    </div>
+    <div class="cs-actions">
+      <button class="btn btn-secondary btn-sm" onclick="expandComposer(true)">
+        <svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></svg>Edit query
+      </button>
+      <button class="btn btn-primary btn-sm" onclick="runSearch()">
+        <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>Run again
+      </button>
+    </div>
+  </div>
 
-            <!-- Pre-loaded from fetch badge -->
-            <div id="loaded-banner" class="alert alert-info hidden" style="padding:8px 12px; font-size:12px; margin-bottom:12px; line-height:1.4;">
-                <div id="loaded-banner-text"></div>
-            </div>
-
-            <div class="form-group" style="margin-bottom:10px;">
-                <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
-                    <span id="seq-input-label">Amino-acid sequence (plain or FASTA)</span>
-                    <button class="btn btn-ghost btn-sm" onclick="clearSequence()" style="padding:2px 8px; font-size:11px; height:auto;">Clear</button>
-                </label>
-                <textarea id="gene-seq" class="form-textarea" rows="7"
-                    oninput="onSeqInput()"></textarea>
-            </div>
-
-            <div id="seq-meta-info" class="text-muted text-sm" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                <span id="detected-type-label"></span>
-                <span id="seq-len-badge" style="font-family:var(--mono); font-size:11px; white-space:nowrap;"></span>
-            </div>
+  <div class="composer-body">
+    <!-- Sequence editor -->
+    <div class="editor-col">
+      <div class="editor-head">
+        <div>
+          <div class="panel-title" id="query-title">Protein query</div>
+          <div class="panel-sub" id="seq-input-label">Amino-acid sequence, plain or FASTA</div>
         </div>
-
-        <div class="card">
-            <div class="card-title">Metrics to Run</div>
-            <div class="toggle-group">
-                <label class="toggle-chip checked" id="chip-blosum">
-                    <input type="checkbox" id="metric-blosum" checked onchange="toggleChip(this,'chip-blosum')">
-                    <span class="dot"></span> <span id="label-align">BLOSUM62</span>
-                </label>
-                <label class="toggle-chip" id="chip-kmer">
-                    <input type="checkbox" id="metric-kmer" onchange="toggleChip(this,'chip-kmer')">
-                    <span class="dot"></span> <span id="label-kmer">K-mer (k={{ kmer_k }})</span>
-                </label>
-                <label class="toggle-chip" id="chip-edit">
-                    <input type="checkbox" id="metric-edit" onchange="toggleChip(this,'chip-edit')">
-                    <span class="dot"></span> Edit Distance
-                </label>
-                <label class="toggle-chip" id="chip-motif">
-                    <input type="checkbox" id="metric-motif" onchange="toggleChip(this,'chip-motif')">
-                    <span class="dot"></span> Motif (JASPAR)
-                </label>
-            </div>
-            <div class="text-muted text-sm mt-8">
-                ⚠ Alignment is slower on long sequences. Motif uses cached TF sets.
-            </div>
-            <div id="edit-warning" class="alert alert-warning hidden" style="padding:8px 12px; font-size:12px; margin-top:10px; line-height:1.4;">
-                ⚠ Edit distance is very slow on nucleotide sequences. Database mRNAs are several thousand bases long, so a search can take many minutes.
-            </div>
-            <div id="motif-warning" class="alert alert-warning hidden" style="padding:8px 12px; font-size:12px; margin-top:10px; line-height:1.4;">
-                ⚠ Motif scores need the gene symbol as the FASTA header (for example <span class="text-mono">&gt;TP53</span>). Sequences loaded from the Fetch page get one automatically; other sequences score 0 for every result.
-            </div>
+        <div class="editor-tools">
+          <button class="btn btn-ghost btn-sm" onclick="loadExample()" title="Insert an example TP53 sequence">
+            <svg viewBox="0 0 24 24"><path d="M9 3h6"/><path d="M10 3v6L5 18a2 2 0 0 0 1.8 3h10.4A2 2 0 0 0 19 18l-5-9V3"/><path d="M7.5 14h9"/></svg>Example
+          </button>
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('file-input').click()" title="Open a FASTA or text file">
+            <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/></svg>Open file
+          </button>
+          <button class="btn btn-ghost btn-sm" onclick="pasteFromClipboard()" title="Paste from clipboard">
+            <svg viewBox="0 0 24 24"><rect x="7" y="4" width="10" height="4" rx="1"/><path d="M8 6H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2"/></svg>Paste
+          </button>
+          <button class="btn btn-ghost btn-sm" onclick="clearSequence()" title="Clear the sequence">
+            <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6.5 7l1 13h9l1-13"/></svg>Clear
+          </button>
+          <span class="sep" aria-hidden="true"></span>
+          <a class="btn btn-ghost btn-sm" href="/fetch" title="Fetch a sequence from NCBI, UniProt or Ensembl">
+            <svg viewBox="0 0 24 24"><path d="M12 4v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M5 19.5h14"/></svg>Fetch sequence
+          </a>
+          <input type="file" id="file-input" accept=".fa,.fasta,.faa,.fna,.fas,.txt,.seq,text/plain" hidden>
         </div>
+      </div>
 
-        <div class="card">
-            <div class="card-title">Options</div>
-            <div class="form-group">
-                <label class="form-label">
-                    Results to show: <span id="top-n-val" style="color:var(--accent);font-weight:600">10</span>
-                </label>
-                <input type="range" id="top-n" min="5" max="30" value="10"
-                       oninput="document.getElementById('top-n-val').textContent=this.value">
-            </div>
-            <div class="form-group">
-                <label class="form-label" for="rank-by">Rank results by</label>
-                <select id="rank-by" class="form-input">
-                    <option value="blosum" id="rank-opt-align" selected>Alignment (BLOSUM62)</option>
-                    <option value="kmer" id="rank-opt-kmer">K-mer (k={{ kmer_k }})</option>
-                    <option value="edit">Edit Distance</option>
-                    <option value="motif">Motif (JASPAR)</option>
-                </select>
-                <div class="text-muted text-sm mt-8">
-                    If the chosen metric is not running, the first selected metric is used.
-                </div>
-            </div>
+      <div id="loaded-banner" class="notice notice-ok hidden" role="status">
+        <svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+        <div id="loaded-banner-text"></div>
+      </div>
 
-            <!-- Protein-only options -->
-            <div class="form-group" id="protein-options">
-                <label class="form-label" for="gap-costs">Gap costs (BLOSUM62)</label>
-                <select id="gap-costs" class="form-input">
-                    {% for existence, extension in gap_costs %}
-                    <option value="{{ existence }},{{ extension }}"
-                        {% if (existence, extension) == default_gap_cost %}selected{% endif %}>
-                        Existence: {{ existence }} Extension: {{ extension }}
-                    </option>
-                    {% endfor %}
-                </select>
-                <div class="text-muted text-sm mt-8">
-                    Same options as NCBI BLAST. A gap of length k costs existence + k × extension.
-                </div>
-            </div>
-
-            <!-- Nucleotide-only info -->
-            <div class="form-group hidden" id="dna-options">
-                <div class="form-label">Nucleotide scoring</div>
-                <div class="text-muted text-sm" style="line-height:1.5;">
-                    Local alignment with match +2, mismatch −3, gap open −5, gap extend −2.
-                    K-mer uses k={{ kmer_k_dna }} (4<sup>{{ kmer_k_dna }}</sup> possible words); shorter words match almost every long DNA sequence.
-                </div>
-                <label style="display:flex; gap:8px; align-items:flex-start; margin-top:12px; font-size:13px; cursor:pointer;">
-                    <input type="checkbox" id="include-genomic" style="margin-top:3px;">
-                    <span>
-                        Include genomic gene sequences
-                        <span class="text-muted text-sm" style="display:block; line-height:1.4;">
-                            60 Ensembl whole-gene sequences (introns included, up to ~360 kb). Off by default: they make a search several times slower and are not directly comparable to mRNA.
-                        </span>
-                    </span>
-                </label>
-            </div>
+      <div class="editor colored" id="editor">
+        <pre class="editor-mirror" id="editor-mirror" aria-hidden="true"></pre>
+        <textarea id="gene-seq" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off"
+                  aria-label="Query sequence" aria-describedby="detected-type-label"></textarea>
+        <div class="editor-empty" id="editor-empty">
+          <div>
+            <div class="ee-title" id="ee-title">Paste a protein sequence or drop a FASTA file</div>
+            <div class="ee-text" id="ee-text">Plain residues or FASTA both work. Start the FASTA header with the gene symbol, like <span class="mono">&gt;TP53</span>, so the motif metric can look up that gene's promoter.</div>
+          </div>
+          <div class="ee-row">
+            <button class="chip-btn" onclick="loadExample()">
+              <svg viewBox="0 0 24 24"><path d="M9 3h6"/><path d="M10 3v6L5 18a2 2 0 0 0 1.8 3h10.4A2 2 0 0 0 19 18l-5-9V3"/></svg>Use the TP53 example
+            </button>
+          </div>
+          <div class="ee-row">
+            <span class="hint">Or fetch from NCBI</span>
+            <button class="chip-btn mono" onclick="loadById('TP53', currentMode)">TP53</button>
+            <button class="chip-btn mono" onclick="loadById('BRCA1', currentMode)">BRCA1</button>
+            <button class="chip-btn mono" onclick="loadById('EGFR', currentMode)">EGFR</button>
+            <button class="chip-btn mono" onclick="loadById('KRAS', currentMode)">KRAS</button>
+            <button class="chip-btn mono" onclick="loadById('MYC', currentMode)">MYC</button>
+          </div>
         </div>
+      </div>
 
-        <button class="btn btn-primary" style="width:100%;" onclick="runSearch()" id="search-btn">
-            🔍 Run Protein Search
+      <div class="editor-status">
+        <div class="status-left" id="detected-type-label" aria-live="polite"></div>
+        <div class="status-right">
+          <span id="label-chip-wrap"></span>
+          <span class="len-badge" id="seq-len-badge"></span>
+          <label class="color-toggle" title="Colour residues by chemical class">
+            <span class="switch"><input type="checkbox" id="color-toggle" checked><span></span></span>
+            Colour
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <aside class="config-col" aria-label="Search settings">
+      <div class="cfg-section">
+        <div class="cfg-head">
+          <span class="section-label">Metrics</span>
+          <span class="hint" id="metric-count">1 of 4 selected</span>
+        </div>
+        <div class="channels" role="group" aria-label="Metrics to run">
+          <label class="channel on" id="chip-blosum" style="--c: var(--ch-blosum); --cw: var(--ch-blosum-wash);">
+            <input type="checkbox" id="metric-blosum" checked>
+            <span class="ch-check"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+            <span><span class="ch-name" id="label-align">BLOSUM62 alignment</span><span class="ch-desc" id="desc-align">Local alignment scored by how often amino acids substitute for each other.</span></span>
+            <span class="ch-meta"><span class="speed" data-v="1"><i></i><i></i><i></i></span><span class="speed-label" id="speed-align">Slowest</span></span>
+          </label>
+          <label class="channel" id="chip-kmer" style="--c: var(--ch-kmer); --cw: var(--ch-kmer-wash);">
+            <input type="checkbox" id="metric-kmer">
+            <span class="ch-check"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+            <span><span class="ch-name" id="label-kmer">K-mer, k = {{ kmer_k }}</span><span class="ch-desc">Share of short words the two sequences have in common. Alignment-free.</span></span>
+            <span class="ch-meta"><span class="speed" data-v="3"><i></i><i></i><i></i></span><span class="speed-label">Fastest</span></span>
+          </label>
+          <label class="channel" id="chip-edit" style="--c: var(--ch-edit); --cw: var(--ch-edit-wash);">
+            <input type="checkbox" id="metric-edit">
+            <span class="ch-check"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+            <span><span class="ch-name">Edit distance</span><span class="ch-desc">Normalised Levenshtein distance: insertions, deletions and substitutions.</span></span>
+            <span class="ch-meta"><span class="speed" id="speed-edit-bars" data-v="2"><i></i><i></i><i></i></span><span class="speed-label" id="speed-edit">Moderate</span></span>
+          </label>
+          <label class="channel" id="chip-motif" style="--c: var(--ch-motif); --cw: var(--ch-motif-wash);">
+            <input type="checkbox" id="metric-motif">
+            <span class="ch-check"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+            <span><span class="ch-name">Motif, JASPAR 2024</span><span class="ch-desc">Shared transcription factor binding sites in the genes' promoters. Uses cached sets.</span></span>
+            <span class="ch-meta"><span class="speed" data-v="3"><i></i><i></i><i></i></span><span class="speed-label">Fast</span></span>
+          </label>
+        </div>
+        <div id="edit-warning" class="notice notice-warn hidden">
+          <svg viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <div>Edit distance is very slow on nucleotide sequences. Database mRNAs are several thousand bases long, so a search can take many minutes.</div>
+        </div>
+        <div id="motif-warning" class="notice notice-warn hidden">
+          <svg viewBox="0 0 24 24" id="motif-icon"></svg>
+          <div id="motif-warning-text"></div>
+        </div>
+      </div>
+
+      <div class="cfg-section">
+        <div class="field">
+          <span class="field-label">Rank results by</span>
+          <div class="rank-group" id="rank-group" role="radiogroup" aria-label="Rank results by">
+            <label style="--c: var(--ch-blosum)" data-metric="blosum"><input type="radio" name="rank-by" value="blosum" checked><span id="rank-opt-align">Alignment</span></label>
+            <label style="--c: var(--ch-kmer)" data-metric="kmer"><input type="radio" name="rank-by" value="kmer"><span id="rank-opt-kmer">K-mer</span></label>
+            <label style="--c: var(--ch-edit)" data-metric="edit"><input type="radio" name="rank-by" value="edit"><span>Edit</span></label>
+            <label style="--c: var(--ch-motif)" data-metric="motif"><input type="radio" name="rank-by" value="motif"><span>Motif</span></label>
+          </div>
+          <span class="hint" id="rank-hint">Metrics use different scales, so they are never combined into one score.</span>
+        </div>
+        <div class="field">
+          <label class="field-label" for="top-n">Results to show</label>
+          <div class="slider-row">
+            <input type="range" class="range" id="top-n" min="5" max="30" value="10" step="1" aria-describedby="top-n-val">
+            <output class="slider-val" id="top-n-val" for="top-n">10</output>
+          </div>
+        </div>
+      </div>
+
+      <!-- Protein-only options -->
+      <div class="cfg-section" id="protein-options">
+        <div class="field">
+          <label class="field-label" for="gap-costs">Gap costs for BLOSUM62</label>
+          <select id="gap-costs" class="select">
+            {% for existence, extension in gap_costs %}
+            <option value="{{ existence }},{{ extension }}" {% if (existence, extension) == default_gap_cost %}selected{% endif %}>Existence {{ existence }}, extension {{ extension }}{% if (existence, extension) == default_gap_cost %} (BLAST default){% endif %}</option>
+            {% endfor %}
+          </select>
+          <span class="hint">The same choices as NCBI BLAST. A gap of length k costs existence + k × extension.</span>
+        </div>
+      </div>
+
+      <!-- Nucleotide-only options -->
+      <div class="cfg-section hidden" id="dna-options">
+        <div class="field">
+          <span class="field-label">Nucleotide scoring</span>
+          <div class="score-spec">
+            <div><b>+2</b><small>Match</small></div>
+            <div><b>−3</b><small>Mismatch</small></div>
+            <div><b>−5</b><small>Gap open</small></div>
+            <div><b>−2</b><small>Gap extend</small></div>
+          </div>
+          <span class="hint">K-mer uses k = {{ kmer_k_dna }} (4<sup>{{ kmer_k_dna }}</sup> possible words). Shorter words match almost every long DNA sequence.</span>
+        </div>
+        <label class="switch-row" for="include-genomic">
+          <span>
+            <span class="t">Include genomic gene sequences</span>
+            <span class="hint" style="display:block; margin-top:2px;">Ensembl whole-gene sequences, introns included, up to about 360 kb. Off by default: they make a search several times slower and aren't directly comparable to mRNA.</span>
+          </span>
+          <span class="switch"><input type="checkbox" id="include-genomic"><span></span></span>
+        </label>
+      </div>
+
+      <div class="cfg-run">
+        <button class="btn btn-primary btn-lg run-btn" onclick="runSearch()" id="search-btn">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+          <span id="search-btn-label">Run protein search</span>
+          <span class="kbd" id="run-kbd">Ctrl ↵</span>
         </button>
+      </div>
+    </aside>
+  </div>
+</section>
 
-        <!-- Recent Searches -->
-        <div class="card" id="recent-card" style="margin-top:16px;">
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-                <div class="card-title" style="margin-bottom:0">Recent Searches</div>
-                <button class="btn btn-ghost btn-sm" onclick="clearRecent()">Clear</button>
-            </div>
-            <div id="recent-list">
-                <div class="text-muted text-sm" style="text-align:center; padding:12px 0">No recent searches yet.</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Right: Results -->
-    <div>
-        <div id="empty-state" class="card" style="text-align:center; padding:64px 24px;">
-            <div style="font-size:52px; margin-bottom:18px" id="empty-icon">🧪</div>
-            <div style="font-size:17px; font-weight:600; margin-bottom:8px; color:var(--text)" id="empty-title">Ready for a protein search</div>
-            <div class="text-muted" style="font-size:13px; max-width:300px; margin:0 auto; line-height:1.6">
-                Paste a sequence or fetch one, choose your metrics, and click Run Search.
-            </div>
-        </div>
-
-        <div id="results-content" class="hidden">
-
-            <div id="error-box" class="hidden"></div>
-
-            <div class="stat-row" id="result-stats"></div>
-
-            <div class="card" id="results-card">
-                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
-                    <div class="card-title" style="margin-bottom:0">Results</div>
-                    <input type="text" id="results-search"
-                           class="form-input"
-                           style="width:220px; padding:7px 12px; font-size:13px;"
-                           placeholder="🔍 Filter results..."
-                           oninput="filterResults(this.value)">
-                </div>
-                <div style="overflow-x:auto;">
-                    <table class="data-table">
-                        <thead id="results-thead"></thead>
-                        <tbody id="results-tbody"></tbody>
-                    </table>
-                    <div id="no-filter-results" class="hidden"
-                         style="text-align:center; padding:24px; color:var(--text-muted); font-size:13px;">
-                        No results match your filter.
-                    </div>
-                </div>
-            </div>
-
-            <div class="card hidden" id="best-match-card">
-                <div class="card-title">Best Match Outside Query Gene</div>
-                <div id="best-match-info"></div>
-            </div>
-
-            <div class="card hidden" id="alignment-card">
-                <div class="card-title">Sequence Alignment</div>
-                <div class="code-block" id="alignment-text"></div>
-            </div>
-        </div>
-    </div>
+<!-- ======================= Recent searches ======================= -->
+<div class="recent" id="recent-card">
+  <span class="recent-title">Recent</span>
+  <div class="recent-list" id="recent-list"><span class="recent-empty">Your recent searches will appear here.</span></div>
+  <button class="btn btn-ghost btn-sm" id="recent-clear" onclick="clearRecent()">Clear</button>
 </div>
 
+<!-- ======================= Results ======================= -->
+<section class="results-area" id="results-area" aria-live="polite">
+
+  <div id="empty-state" class="empty-results">
+    <div>
+      <h3 id="empty-title">Ready for a protein search</h3>
+      <p>Ranked matches, a side-by-side alignment of the best hit and per-gene details appear here once a search finishes.</p>
+    </div>
+    <div class="metric-legend">
+      <div style="--c: var(--ch-blosum)"><b>Alignment</b><span>Finds conserved regions. Biology-aware, slowest.</span></div>
+      <div style="--c: var(--ch-kmer)"><b>K-mer</b><span>Compares shared short words. Very fast screening.</span></div>
+      <div style="--c: var(--ch-edit)"><b>Edit distance</b><span>Counts the edits needed to turn one into the other.</span></div>
+      <div style="--c: var(--ch-motif)"><b>Motif</b><span>Compares promoter regulation, not the sequence itself.</span></div>
+    </div>
+  </div>
+
+  <div id="error-box" class="notice notice-err hidden" role="alert">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg>
+    <div id="error-text"></div>
+  </div>
+
+  <div id="results-content" class="hidden">
+    <div class="res-head">
+      <div>
+        <div class="res-kicker">Results ranked by <span class="rank-pill" id="res-rank-pill"></span></div>
+        <div class="res-title"><h2 id="res-query">Query</h2><span class="iso" id="res-isoform"></span></div>
+      </div>
+      <div class="res-actions">
+        <button class="btn btn-secondary btn-sm" onclick="downloadCSV()">
+          <svg viewBox="0 0 24 24"><path d="M12 4v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M5 19.5h14"/></svg>Download CSV
+        </button>
+        <a class="btn btn-secondary btn-sm" href="/visualize">
+          <svg viewBox="0 0 24 24"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M21 20H3"/></svg>Charts
+        </a>
+      </div>
+    </div>
+
+    <div class="panel facts" id="result-stats"></div>
+
+    <div class="panel table-panel" id="results-card">
+      <div class="table-toolbar">
+        <div class="left">
+          <span class="panel-title" id="table-title">Top matches</span>
+          <span class="panel-sub" id="table-sub"></span>
+        </div>
+        <div class="right">
+          <div class="input-icon">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+            <input type="text" id="results-search" class="input" placeholder="Filter by gene or isoform" aria-label="Filter results">
+          </div>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table class="results">
+          <thead id="results-thead"></thead>
+          <tbody id="results-tbody"></tbody>
+        </table>
+        <div id="no-filter-results" class="no-filter hidden">No results match your filter.</div>
+      </div>
+    </div>
+
+    <div class="panel match-panel hidden" id="best-match-card">
+      <div class="match-head">
+        <div>
+          <div class="match-kicker">Best match outside the query gene</div>
+          <div class="match-title" id="best-match-title"></div>
+        </div>
+        <div class="gauges" id="best-match-info"></div>
+      </div>
+
+      <div id="alignment-card" class="hidden">
+        <div class="aln-toolbar">
+          <div class="aln-stats" id="aln-stats"></div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <div class="segmented" role="group" aria-label="Alignment view">
+              <button aria-pressed="true" id="aln-view-fmt" onclick="setAlnView('fmt')">Formatted</button>
+              <button aria-pressed="false" id="aln-view-raw" onclick="setAlnView('raw')">Text</button>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="copyAlignment()">
+              <svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Copy
+            </button>
+          </div>
+        </div>
+        <div class="aln-overview" id="aln-overview" title="Identity along the alignment. Click to jump.">
+          <canvas id="aln-canvas" height="34"></canvas>
+          <div class="ov-legend"><span id="ov-start"></span><span>Identity along the aligned region</span><span id="ov-end"></span></div>
+        </div>
+        <div class="aln-body">
+          <div class="aln-view" id="aln-view"></div>
+          <div class="aln-legend">
+            <span><b class="aln-key"><span class="id">A</span></b>Identical residue, marked |</span>
+            <span><b class="aln-key"><span class="mm">A</span></b>Substitution, marked ·</span>
+            <span><b class="aln-key"><span class="gp">-</span></b>Gap, or a residue facing a gap</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= Gene drawer ======================= -->
+<div class="drawer-backdrop" id="drawer-backdrop" onclick="closeDrawer()"></div>
+<aside class="drawer" id="drawer" aria-hidden="true" aria-labelledby="drawer-sym" role="dialog">
+  <div class="drawer-head">
+    <div>
+      <div class="drawer-kicker" id="drawer-kicker">Gene</div>
+      <div class="drawer-sym" id="drawer-sym">Gene</div>
+      <div class="drawer-org" id="drawer-org"></div>
+    </div>
+    <button class="btn btn-ghost btn-icon" onclick="closeDrawer()" aria-label="Close details">
+      <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body" id="drawer-body"></div>
+  <div class="drawer-foot">
+    <a class="btn btn-secondary btn-sm" id="drawer-db-link" href="/database">Open in database</a>
+    <button class="btn btn-primary btn-sm" id="drawer-use" onclick="useDrawerIsoform()">Use as query</button>
+  </div>
+</aside>
+{% endblock %}
+
+{% block scripts %}
 <script>
+/* ==========================================================================
+   Search page logic
+   Preserves the original behaviour: per-tab drafts and results, Fetch
+   hand-off via sessionStorage, ID detection, recent searches, and the
+   exact /api/search request body.
+   ========================================================================== */
+
 // ── Mode (tab) configuration ──
 const MODES = {
-    protein: {
-        name:        'Protein',
-        icon:        '🧪',
-        alignLabel:  'BLOSUM62',
-        kmerK:       {{ kmer_k }},
-        unit:        'aa',
-        inputLabel:  'Amino-acid sequence (plain or FASTA)',
-        placeholder: '>TP53\nMEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQ...',
-    },
-    dna: {
-        name:        'Nucleotide',
-        icon:        '🧬',
-        alignLabel:  'DNA Alignment',
-        kmerK:       {{ kmer_k_dna }},
-        unit:        'bp',
-        inputLabel:  'Nucleotide sequence (A, C, G, T, N; plain or FASTA)',
-        placeholder: '>TP53\nATGGAGGAGCCGCAGTCAGATCCTAGCGTCGAGCCCCCTCTGAGTCAGGAAACATTTTCAGACC...',
-    },
+  protein: {
+    name: 'Protein', alignLabel: 'BLOSUM62 alignment', alignShort: 'BLOSUM62', rankAlign: 'Alignment',
+    kmerK: {{ kmer_k }}, unit: 'aa',
+    inputLabel: 'Amino-acid sequence, plain or FASTA',
+    alignDesc: 'Local alignment scored by how often amino acids substitute for each other.',
+    alignSpeed: 'Slowest', editSpeed: 'Moderate', editSpeedV: 2,
+  },
+  dna: {
+    name: 'Nucleotide', alignLabel: 'DNA alignment', alignShort: 'DNA alignment', rankAlign: 'Alignment',
+    kmerK: {{ kmer_k_dna }}, unit: 'bp',
+    inputLabel: 'Nucleotide sequence (A, C, G, T, N), plain or FASTA',
+    alignDesc: 'Local alignment: match +2, mismatch −3, gap open −5, gap extend −2.',
+    alignSpeed: 'Slowest', editSpeed: 'Very slow', editSpeedV: 1,
+  },
 };
 const VALID_AA  = /^[ACDEFGHIKLMNPQRSTVWY]*$/;
 const VALID_NUC = /^[ACGTN]*$/;
+const METRIC_ORDER = ['blosum', 'kmer', 'edit', 'motif'];
+const METRIC_COLOR = { blosum: 'var(--ch-blosum)', kmer: 'var(--ch-kmer)', edit: 'var(--ch-edit)', motif: 'var(--ch-motif)' };
+const METRIC_WASH  = { blosum: 'var(--ch-blosum-wash)', kmer: 'var(--ch-kmer-wash)', edit: 'var(--ch-edit-wash)', motif: 'var(--ch-motif-wash)' };
+const METRIC_HEX   = { blosum: '#5A4BDB', kmer: '#0A9384', edit: '#E0512F', motif: '#D08A0E' };
+
+const EXAMPLES = {
+  protein: '>TP53 NP_000537.3\nMEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWFTEDPGPDEAPRMPEAAPPVAPAPAAPTPAAPAPAPSWPLSSSVPSQKTYQGSYGFRLGFLHSGTAKSVTCTYSPALNKMFCQLAKTCPVQLWVDSTPPPGTRVRAMAIYKQSQHMTEVVRRCPHHERCSDSDGLAPPQHLIRVEGNLRVEYLDDRNTFRHSVVVPYEPPEVGSDCTTIHYNYMCNSSCMGGMNRRPILTIITLEDSSGNLLGRNSFEVRVCACPGRDRRTEEENLRKKGEPHHELPPGSTKRALPNNTSSSPQPKKKPLDGEYFTLQIRGRERFEMFRELNEALELKDAQAGKEPGGSRAHSSHLKSKKGQSTSRHKKLMFKTEGPDSD',
+  dna: '>TP53 NM_000546.6\nATGGAGGAGCCGCAGTCAGATCCTAGCGTCGAGCCCCCTCTGAGTCAGGAAACATTTTCAGACCTATGGAAACTACTTCCTGAAAACAACGTTCTGTCCCCCTTGCCGTCCCAAGCAATGGATGATTTGATGCTGTCCCCGGACGATATTGAACAATGGTTCACTGAAGACCCAGGTCCAGATGAAGCTCCCAGAATGCCAGAGGCTGCTCCCCCCGTGGCCCCTGCACCAGCAGCTCCTACACCGGCGGCCCCTGCACCAGCCCCCTCCTGGCCCCTGTCATCTTCTGTCCCTTCCCAGAAAACCTACCAGGGCAGCTACGGTTTCCGTCTGGGCTTCTTGCATTCTGGGACAGCCAAGTCTGTGACTTGCACGTACTCCCCTGCCCTCAACAAGATGTTTTGCCAACTGGCCAAGACCTGCCCTGTGCAGCTGTGGGTTGATTCCACACCCCCGCCCGGCACCCGCGTCCGCGCCATGGCCATCTACAAGCAGTCACAGCACATGACGGAGGTTGTGAGGCGCTGCCCCCACCATGAGCGCTGCTCAGATAGCGATGGTCTGGCCCCTCCTCAGCATCTTATCCGAGTGGAAGGAAATTTGCGTGTGGAGTATTTGGATGACAGAAACACTTTTCGACATAGTGTGGTGGTGCCCTATGAGCCGCCTGAGGTTGGCTCTGACTGTACCACCATCCACTACAACTACATGTGTAACAGTTCCTGCATGGGCGGCATGAACCGGAGGCCCATCCTCACCATCATCACACTGGAAGACTCCAGTGGTAATCTACTGGGACGGAACAGCTTTGAGGTGCGTGTTTGTGCCTGTCCTGGGAGAGACCGGCGCACAGAGGAAGAGAATCTCCGCAAGAAAGGGGAGCCTCACCACGAGCTGCCCCCAGGGAGCACTAAGCGAGCACTGCCCAACAACACCAGCTCCTCTCCCCAGCCAAAGAAGAAACCACTGGATGGAGAATATTTCACCCTTCAGATCCGTGGGCGTGAGCGCTTCGAGATGTTCCGAGAGCTGAATGAGGCCTTGGAACTCAAGGATGCCCAGGCTGGGAAGGAGCCAGGGGGGAGCAGGGCTCACTCCAGCCACCTGAAGTCCAAAAAGGGTCAGTCTACCTCCCGCCATAAAAAACTCATGTTCAAGACAGAAGGGCCTGACTCAGACTGA',
+};
 
 let currentMode = 'protein';
 // Each tab keeps its own draft sequence, loaded-banner and last results.
@@ -234,506 +799,1175 @@ const lastSearch = { protein: null, dna: null };
 let allResults    = [];
 let activeMetrics = [];
 let activeData    = null;
+let sortState     = { key: null, dir: 'desc' };   // null = server ranking
+let selectedRow   = null;
+let searchAbort   = null;
+let alnState      = null;
+let drawerState   = null;
 
-const METRIC_COLORS = {
-    blosum: '#0071e3',
-    kmer:   '#34c759',
-    edit:   '#ff3b30',
-    motif:  '#ff9500',
-};
+const $ = (id) => document.getElementById(id);
+const esc = GS.escape;
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 
+/* ---------------------------------------------------------------------------
+   Labels
+   --------------------------------------------------------------------------- */
 function metricLabel(m, data) {
-    const mode = (data && data.seq_mode === 'dna') ? 'dna' : 'protein';
-    if (m === 'blosum') return MODES[mode].alignLabel;
-    if (m === 'kmer')   return `K-mer (k=${data && data.kmer_k ? data.kmer_k : MODES[mode].kmerK})`;
-    if (m === 'edit')   return 'Edit Dist';
-    if (m === 'motif')  return 'Motif';
-    return m;
+  const mode = (data && data.seq_mode === 'dna') ? 'dna' : (data ? 'protein' : currentMode);
+  if (m === 'blosum') return MODES[mode].alignShort;
+  if (m === 'kmer')   return `K-mer, k = ${data && data.kmer_k ? data.kmer_k : MODES[mode].kmerK}`;
+  if (m === 'edit')   return 'Edit distance';
+  if (m === 'motif')  return 'Motif';
+  return m;
 }
 
-function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+/* ---------------------------------------------------------------------------
+   Chromatogram: a four-channel trace that reflects the selected metrics
+   --------------------------------------------------------------------------- */
+function buildChromatogram() {
+  const svg = $('chromatogram');
+  const W = 1200, H = 40, base = H - 4;
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const paths = METRIC_ORDER.map((m, ci) => {
+    const peaks = [];
+    for (let x = 14 + ci * 11; x < W; x += 30 + rnd() * 30) {
+      if (rnd() < 0.5) peaks.push({ x: x + rnd() * 10, h: 7 + rnd() * 27, w: 3.8 + rnd() * 3 });
+    }
+    let d = `M0 ${base}`;
+    for (let x = 0; x <= W; x += 3) {
+      let y = 0;
+      for (const p of peaks) { const dx = (x - p.x) / p.w; if (Math.abs(dx) < 4) y += p.h * Math.exp(-dx * dx / 2); }
+      d += ` L${x} ${(base - Math.min(y, base - 3)).toFixed(1)}`;
+    }
+    return `<path data-m="${m}" d="${d}" fill="none" stroke="${METRIC_HEX[m]}" stroke-width="1.5" stroke-linejoin="round"/>`;
+  });
+  svg.innerHTML = `<line x1="0" x2="${W}" y1="${base}" y2="${base}" stroke="#DCE2EA" stroke-width="1" vector-effect="non-scaling-stroke"/>` + paths.join('');
+}
+function updateChromatogram() {
+  const sel = getSelectedMetrics();
+  document.querySelectorAll('#chromatogram path[data-m]').forEach(p => p.classList.toggle('off', !sel.includes(p.dataset.m)));
 }
 
-// ── Tabs ──
+/* ---------------------------------------------------------------------------
+   Tabs
+   --------------------------------------------------------------------------- */
 function switchMode(mode) {
-    if (!MODES[mode] || mode === currentMode && document.getElementById('gene-seq').dataset.ready) {
-        return;
-    }
-    const seqBox = document.getElementById('gene-seq');
+  const seqBox = $('gene-seq');
+  if (!MODES[mode] || (mode === currentMode && seqBox.dataset.ready)) return;
 
-    // Save the outgoing tab's draft
-    if (seqBox.dataset.ready) {
-        drafts[currentMode].text = seqBox.value;
-    }
-    seqBox.dataset.ready = '1';
-    currentMode = mode;
-    const cfg = MODES[mode];
+  // Save the outgoing tab's draft
+  if (seqBox.dataset.ready) drafts[currentMode].text = seqBox.value;
+  seqBox.dataset.ready = '1';
+  currentMode = mode;
+  const cfg = MODES[mode];
 
-    // Tab buttons
-    for (const m of Object.keys(MODES)) {
-        const btn = document.getElementById(`tab-${m}`);
-        btn.classList.toggle('active', m === mode);
-        btn.setAttribute('aria-selected', m === mode ? 'true' : 'false');
-    }
+  for (const m of Object.keys(MODES)) {
+    const btn = $(`tab-${m}`);
+    btn.setAttribute('aria-selected', m === mode ? 'true' : 'false');
+  }
 
-    // Labels and mode-specific options
-    document.getElementById('query-title').textContent      = `${cfg.name} Query`;
-    document.getElementById('seq-input-label').textContent  = cfg.inputLabel;
-    seqBox.placeholder                                      = cfg.placeholder;
-    document.getElementById('label-align').textContent      = cfg.alignLabel;
-    document.getElementById('label-kmer').textContent       = `K-mer (k=${cfg.kmerK})`;
-    document.getElementById('rank-opt-align').textContent   = mode === 'dna' ? 'DNA Alignment' : 'Alignment (BLOSUM62)';
-    document.getElementById('rank-opt-kmer').textContent    = `K-mer (k=${cfg.kmerK})`;
-    document.getElementById('protein-options').classList.toggle('hidden', mode !== 'protein');
-    document.getElementById('dna-options').classList.toggle('hidden', mode !== 'dna');
-    document.getElementById('search-btn').textContent       = `🔍 Run ${cfg.name} Search`;
-    document.getElementById('empty-icon').textContent       = cfg.icon;
-    document.getElementById('empty-title').textContent      = `Ready for a ${cfg.name.toLowerCase()} search`;
-    updateWarnings();
+  // Labels and mode-specific options
+  $('query-title').textContent     = `${cfg.name} query`;
+  $('seq-input-label').textContent = cfg.inputLabel;
+  $('label-align').textContent     = cfg.alignLabel;
+  $('desc-align').textContent      = cfg.alignDesc;
+  $('label-kmer').textContent      = `K-mer, k = ${cfg.kmerK}`;
+  $('speed-edit').textContent      = cfg.editSpeed;
+  $('speed-edit-bars').dataset.v   = cfg.editSpeedV;
+  $('protein-options').classList.toggle('hidden', mode !== 'protein');
+  $('dna-options').classList.toggle('hidden', mode !== 'dna');
+  $('search-btn-label').textContent = `Run ${cfg.name.toLowerCase()} search`;
+  $('empty-title').textContent     = `Ready for a ${cfg.name.toLowerCase()} search`;
+  $('ee-title').textContent        = mode === 'dna' ? 'Paste a nucleotide sequence or drop a FASTA file' : 'Paste a protein sequence or drop a FASTA file';
+  updateWarnings();
+  updateChromatogram();
 
-    // Restore this tab's draft and banner
-    seqBox.value = drafts[mode].text;
-    setBanner(drafts[mode].banner);
-    onSeqInput();
+  // Restore this tab's draft and banner
+  seqBox.value = drafts[mode].text;
+  setBanner(drafts[mode].banner);
+  onSeqInput();
 
-    // Restore this tab's last results
-    document.getElementById('results-search').value = '';
-    if (lastSearch[mode]) {
-        renderResults(lastSearch[mode].data, lastSearch[mode].metrics);
-        document.getElementById('empty-state').classList.add('hidden');
-    } else {
-        allResults = []; activeMetrics = []; activeData = null;
-        document.getElementById('results-content').classList.add('hidden');
-        document.getElementById('empty-state').classList.remove('hidden');
-    }
+  // Restore this tab's last results
+  $('results-search').value = '';
+  $('error-box').classList.add('hidden');
+  closeDrawer();
+  if (lastSearch[mode]) {
+    renderResults(lastSearch[mode].data, lastSearch[mode].metrics, lastSearch[mode].elapsed);
+    $('empty-state').classList.add('hidden');
+    collapseComposer();
+  } else {
+    allResults = []; activeMetrics = []; activeData = null;
+    $('results-content').classList.add('hidden');
+    $('empty-state').classList.remove('hidden');
+    expandComposer(false);
+  }
 
-    // Remember the tab for reloads and shareable links
-    try { sessionStorage.setItem('genesim_search_mode', mode); } catch (e) {}
-    const url = new URL(window.location.href);
-    url.searchParams.set('mode', mode);
-    url.searchParams.delete('from');
-    history.replaceState(null, '', url);
+  try { sessionStorage.setItem('genesim_search_mode', mode); } catch (e) {}
+  const url = new URL(window.location.href);
+  url.searchParams.set('mode', mode);
+  url.searchParams.delete('from');
+  history.replaceState(null, '', url);
 }
 
 // Move the current sequence to the other tab (used by the "looks like" hint)
 function moveSequenceTo(mode) {
-    const seqBox = document.getElementById('gene-seq');
-    const text = seqBox.value;
-    const banner = drafts[currentMode].banner;
-    seqBox.value = '';
-    drafts[currentMode] = { text: '', banner: '' };
-    setBanner('');
-    switchMode(mode);
-    drafts[mode] = { text, banner };
-    seqBox.value = text;
-    setBanner(banner);
-    onSeqInput();
+  const seqBox = $('gene-seq');
+  const text = seqBox.value;
+  const banner = drafts[currentMode].banner;
+  seqBox.value = '';
+  drafts[currentMode] = { text: '', banner: '' };
+  setBanner('');
+  switchMode(mode);
+  drafts[mode] = { text, banner };
+  seqBox.value = text;
+  setBanner(banner);
+  onSeqInput();
 }
 
 function setBanner(html) {
-    drafts[currentMode].banner = html;
-    const banner = document.getElementById('loaded-banner');
-    document.getElementById('loaded-banner-text').innerHTML = html;
-    banner.classList.toggle('hidden', !html);
+  drafts[currentMode].banner = html;
+  $('loaded-banner-text').innerHTML = html;
+  $('loaded-banner').classList.toggle('hidden', !html);
 }
 
-function toggleChip(cb, id) {
-    document.getElementById(id).classList.toggle('checked', cb.checked);
-    updateWarnings();
+/* ---------------------------------------------------------------------------
+   Metrics, ranking and warnings
+   --------------------------------------------------------------------------- */
+function getSelectedMetrics() {
+  const m = [];
+  if ($('metric-blosum').checked) m.push('blosum');
+  if ($('metric-kmer').checked)   m.push('kmer');
+  if ($('metric-edit').checked)   m.push('edit');
+  if ($('metric-motif').checked)  m.push('motif');
+  return m;
+}
+function getRankBy() {
+  const r = document.querySelector('input[name="rank-by"]:checked');
+  return r ? r.value : 'blosum';
+}
+function effectiveRank(metrics, sortBy) {
+  // Mirrors app.py: the requested metric if it ran, otherwise the first that did
+  return metrics.includes(sortBy) ? sortBy : (METRIC_ORDER.find(m => metrics.includes(m)) || null);
 }
 
 function updateWarnings() {
-    const motifOn = document.getElementById('metric-motif').checked;
-    const editOn  = document.getElementById('metric-edit').checked;
-    document.getElementById('motif-warning').classList.toggle('hidden', !motifOn);
-    document.getElementById('edit-warning').classList.toggle('hidden', !(editOn && currentMode === 'dna'));
+  const metrics = getSelectedMetrics();
+  for (const m of METRIC_ORDER) $(`chip-${m}`).classList.toggle('on', metrics.includes(m));
+  $('metric-count').textContent = `${metrics.length} of 4 selected`;
+
+  const editOn  = metrics.includes('edit');
+  const motifOn = metrics.includes('motif');
+  $('edit-warning').classList.toggle('hidden', !(editOn && currentMode === 'dna'));
+
+  // Motif needs the gene symbol as the FASTA header
+  const label = fastaLabel($('gene-seq').value);
+  const motifBox = $('motif-warning');
+  if (motifOn) {
+    motifBox.classList.remove('hidden');
+    if (label) {
+      motifBox.className = 'notice notice-info';
+      $('motif-icon').innerHTML = '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>';
+      $('motif-warning-text').innerHTML = `Motif scores will use the promoter of <span class="mono">${esc(label)}</span>, taken from the FASTA header. If that isn't a gene symbol, every motif score will be 0.`;
+    } else {
+      motifBox.className = 'notice notice-warn';
+      $('motif-icon').innerHTML = '<path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/>';
+      $('motif-warning-text').innerHTML = `Motif scores need the gene symbol as the FASTA header, for example <span class="mono">&gt;TP53</span>. Sequences loaded from Fetch get one automatically; without it, every result scores 0.`;
+    }
+  } else {
+    motifBox.classList.add('hidden');
+  }
+
+  // Rank-by state
+  const sortBy = getRankBy();
+  document.querySelectorAll('#rank-group label').forEach(l => l.classList.toggle('not-running', !metrics.includes(l.dataset.metric)));
+  const eff = effectiveRank(metrics, sortBy);
+  const hint = $('rank-hint');
+  if (!metrics.length) {
+    hint.textContent = 'Select at least one metric to run.';
+  } else if (eff !== sortBy) {
+    hint.innerHTML = `${esc(rankName(sortBy))} isn't selected, so results will be ranked by ${esc(rankName(eff))}.`;
+  } else {
+    hint.textContent = 'Metrics use different scales, so they are never combined into one score.';
+  }
+  updateChromatogram();
+}
+function rankName(m) {
+  return { blosum: MODES[currentMode].alignShort, kmer: 'K-mer', edit: 'edit distance', motif: 'motif' }[m] || m;
 }
 
-function getSelectedMetrics() {
-    const m = [];
-    if (document.getElementById('metric-blosum').checked) m.push('blosum');
-    if (document.getElementById('metric-kmer').checked)   m.push('kmer');
-    if (document.getElementById('metric-edit').checked)   m.push('edit');
-    if (document.getElementById('metric-motif').checked)  m.push('motif');
-    return m;
+/* ---------------------------------------------------------------------------
+   Sequence editor
+   --------------------------------------------------------------------------- */
+const AA_CLASS = {};
+'AILMFWV'.split('').forEach(c => AA_CLASS[c] = 'r-hyd');
+'KR'.split('').forEach(c => AA_CLASS[c] = 'r-pos');
+'DE'.split('').forEach(c => AA_CLASS[c] = 'r-neg');
+'NQST'.split('').forEach(c => AA_CLASS[c] = 'r-pol');
+AA_CLASS.C = 'r-cys'; AA_CLASS.G = 'r-gly'; AA_CLASS.P = 'r-pro'; AA_CLASS.H = 'r-aro'; AA_CLASS.Y = 'r-aro';
+const NT_CLASS = { A: 'n-a', C: 'n-c', G: 'n-g', T: 'n-t', N: 'n-n' };
+let mirrorQueued = false;
+
+function residueClass(ch) {
+  const u = ch.toUpperCase();
+  if (currentMode === 'dna') return NT_CLASS[u] || 'x';
+  return AA_CLASS[u] || 'x';
+}
+
+function renderMirror() {
+  mirrorQueued = false;
+  const ta = $('gene-seq'), mirror = $('editor-mirror');
+  const text = ta.value;
+  if (text.length > 120000) { mirror.textContent = text + '\n'; return; }
+  const lines = text.split('\n');
+  let html = '';
+  lines.forEach((line, li) => {
+    if (li > 0) html += '\n';
+    if (line.trimStart().startsWith('>')) { html += `<span class="h">${esc(line)}</span>`; return; }
+    let run = '', cls = null;
+    const flush = () => { if (run) { html += cls ? `<span class="${cls}">${esc(run)}</span>` : esc(run); } run = ''; };
+    for (const ch of line) {
+      const c = /\s/.test(ch) ? null : residueClass(ch);
+      if (c !== cls) { flush(); cls = c; }
+      run += ch;
+    }
+    flush();
+  });
+  mirror.innerHTML = html + '\n';
+  mirror.scrollTop = ta.scrollTop;
+}
+function queueMirror() {
+  if (!mirrorQueued) { mirrorQueued = true; requestAnimationFrame(renderMirror); }
+}
+
+function fastaLabel(raw) {
+  const first = (raw || '').trim().split(/\r?\n/)[0] || '';
+  if (!first.startsWith('>')) return '';
+  return first.slice(1).trim().split(/\s+/)[0] || '';
 }
 
 function clearSequence() {
-    document.getElementById('gene-seq').value = '';
-    drafts[currentMode] = { text: '', banner: '' };
-    setBanner('');
-    for (const key of ['seq', 'symbol', 'source', 'type', 'isoform', 'source_url']) {
-        sessionStorage.removeItem(`genesim_query_${key}`);
-    }
-    onSeqInput();
+  $('gene-seq').value = '';
+  drafts[currentMode] = { text: '', banner: '' };
+  setBanner('');
+  for (const key of ['seq', 'symbol', 'source', 'type', 'isoform', 'source_url']) {
+    sessionStorage.removeItem(`genesim_query_${key}`);
+  }
+  onSeqInput();
+  $('gene-seq').focus();
 }
 
 function parseSequence(raw) {
-    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    const body = (lines.length && lines[0].startsWith('>')) ? lines.slice(1) : lines;
-    return body.join('').toUpperCase().replace(/\s+/g, '');
+  const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const body = (lines.length && lines[0].startsWith('>')) ? lines.slice(1) : lines;
+  return body.join('').toUpperCase().replace(/\s+/g, '');
 }
 
 function onSeqInput() {
-    const raw = document.getElementById('gene-seq').value.trim();
-    drafts[currentMode].text = document.getElementById('gene-seq').value;
-    const typeLabel = document.getElementById('detected-type-label');
-    const lenBadge  = document.getElementById('seq-len-badge');
-    const cfg = MODES[currentMode];
+  const ta = $('gene-seq');
+  const raw = ta.value.trim();
+  drafts[currentMode].text = ta.value;
+  const typeLabel = $('detected-type-label');
+  const lenBadge  = $('seq-len-badge');
+  const cfg = MODES[currentMode];
 
-    typeLabel.style.color = 'var(--text-muted)';
-    if (!raw) {
-        typeLabel.textContent = `Paste a ${cfg.name.toLowerCase()} sequence or fetch one`;
-        lenBadge.textContent = '';
-        return;
-    }
+  queueMirror();
+  $('editor-empty').classList.toggle('hidden', ta.value.length > 0);
+  const label = fastaLabel(ta.value);
+  $('label-chip-wrap').innerHTML = label
+    ? `<span class="label-chip" title="Query label from the FASTA header">&gt;${esc(label.length > 24 ? label.slice(0, 24) + '…' : label)}</span>` : '';
+  updateWarnings();
 
-    const seq = parseSequence(raw);
-    if (!seq) {
-        typeLabel.textContent = 'Enter sequence letters';
-        lenBadge.textContent = '';
-        return;
-    }
+  if (!raw) {
+    typeLabel.textContent = `Paste a ${cfg.name.toLowerCase()} sequence, or fetch one by name`;
+    lenBadge.textContent = '';
+    return;
+  }
 
-    // A single word that is not a valid sequence is probably an accession
-    // number or gene symbol (e.g. NP_000537.3, P04637, TP53): offer to fetch it.
-    const validForTab = currentMode === 'dna' ? VALID_NUC.test(seq) : VALID_AA.test(seq);
-    if (!raw.startsWith('>') && /^[A-Za-z0-9_.\-]{2,25}$/.test(raw) && (/[0-9_.\-]/.test(raw) || !validForTab)) {
-        const id = raw.toUpperCase();
-        typeLabel.innerHTML = `This looks like an ID, not a sequence. <a href="#" onclick="loadById('${id}', currentMode); return false;" style="color:var(--accent); font-weight:600; text-decoration:none;">Fetch ${escapeHtml(id)} →</a>`;
-        lenBadge.textContent = '';
-        return;
-    }
-    lenBadge.textContent = `${seq.length.toLocaleString()} ${cfg.unit}`;
+  const seq = parseSequence(raw);
+  if (!seq) {
+    typeLabel.textContent = 'Add sequence letters below the header';
+    lenBadge.textContent = '';
+    return;
+  }
 
-    const isNuc     = VALID_NUC.test(seq);
-    const isProtein = VALID_AA.test(seq);
-    const other     = currentMode === 'protein' ? 'dna' : 'protein';
-    const moveLink  = `<a href="#" onclick="moveSequenceTo('${other}'); return false;" style="color:var(--accent); font-weight:600; text-decoration:none;">Move it to the ${MODES[other].name} tab →</a>`;
+  // A single word that is not a valid sequence is probably an accession
+  // number or gene symbol (e.g. NP_000537.3, P04637, TP53): offer to fetch it.
+  const validForTab = currentMode === 'dna' ? VALID_NUC.test(seq) : VALID_AA.test(seq);
+  if (!raw.startsWith('>') && /^[A-Za-z0-9_.\-]{2,25}$/.test(raw) && (/[0-9_.\-]/.test(raw) || !validForTab)) {
+    const id = raw.toUpperCase();
+    typeLabel.innerHTML = `<span>This looks like an ID, not a sequence.</span> <a href="#" onclick="loadById('${esc(id)}', currentMode); return false;">Fetch ${esc(id)}</a>`;
+    lenBadge.textContent = '';
+    return;
+  }
+  lenBadge.textContent = `${seq.length.toLocaleString('en-US')} ${cfg.unit}`;
 
-    if (currentMode === 'dna') {
-        if (isNuc) {
-            typeLabel.innerHTML = '🧬 <strong style="color:var(--purple)">Nucleotide sequence</strong>';
-        } else if (isProtein) {
-            typeLabel.innerHTML = `<span style="color:#c0392b">⚠ This looks like a protein sequence.</span> ${moveLink}`;
-        } else {
-            typeLabel.innerHTML = '<span style="color:#c0392b">⚠ Only A, C, G, T and N are allowed.</span>';
-        }
+  const isNuc     = VALID_NUC.test(seq);
+  const isProtein = VALID_AA.test(seq);
+  const other     = currentMode === 'protein' ? 'dna' : 'protein';
+  const moveLink  = `<a href="#" onclick="moveSequenceTo('${other}'); return false;">Move it to ${MODES[other].name}</a>`;
+
+  if (currentMode === 'dna') {
+    if (isNuc) {
+      const gc = (seq.match(/[GC]/g) || []).length / Math.max(1, seq.replace(/N/g, '').length);
+      typeLabel.innerHTML = `<span class="ok">Nucleotide sequence</span><span>GC ${(gc * 100).toFixed(1)}%</span>`;
+    } else if (isProtein) {
+      typeLabel.innerHTML = `<span class="bad">This looks like a protein sequence.</span> ${moveLink}`;
     } else {
-        if (!isProtein) {
-            typeLabel.innerHTML = '<span style="color:#c0392b">⚠ Contains characters that are not amino acids.</span>';
-        } else if (isNuc && seq.length >= 20) {
-            // Only A/C/G/T/N letters: almost certainly DNA pasted into the protein tab
-            typeLabel.innerHTML = `<span style="color:#8a5a00">This looks like a nucleotide sequence.</span> ${moveLink}`;
-        } else {
-            typeLabel.innerHTML = '🧪 <strong style="color:var(--accent)">Protein sequence</strong>';
-        }
+      typeLabel.innerHTML = `<span class="bad">Only A, C, G, T and N are allowed.</span><span>Highlighted letters need fixing.</span>`;
     }
+  } else {
+    if (!isProtein) {
+      typeLabel.innerHTML = `<span class="bad">Contains characters that aren't amino acids.</span><span>Highlighted letters need fixing.</span>`;
+    } else if (isNuc && seq.length >= 20) {
+      // Only A/C/G/T/N letters: almost certainly DNA pasted into the protein tab
+      typeLabel.innerHTML = `<span class="soft">This looks like a nucleotide sequence.</span> ${moveLink}`;
+    } else {
+      typeLabel.innerHTML = `<span class="ok">Protein sequence</span>`;
+    }
+  }
+}
+
+function loadExample() {
+  $('gene-seq').value = EXAMPLES[currentMode];
+  setBanner('');
+  onSeqInput();
+  $('gene-seq').scrollTop = 0;
+  GS.toast(`Loaded the TP53 ${currentMode === 'dna' ? 'coding sequence' : 'protein'} example`);
+}
+
+async function pasteFromClipboard() {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text) { GS.toast('The clipboard is empty'); return; }
+    $('gene-seq').value = text;
+    setBanner('');
+    onSeqInput();
+  } catch (e) {
+    $('gene-seq').focus();
+    GS.toast(`Clipboard access was blocked. Press ${isMac ? '⌘' : 'Ctrl'}+V instead.`, 3200);
+  }
+}
+
+function readFile(file) {
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { GS.toast('That file is larger than 5 MB'); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    $('gene-seq').value = String(reader.result || '').replace(/\r\n/g, '\n');
+    setBanner(`Loaded <strong>${esc(file.name)}</strong> from your computer.`);
+    onSeqInput();
+  };
+  reader.readAsText(file);
+}
+
+/* ---------------------------------------------------------------------------
+   Fetch hand-off and loading by ID (unchanged contract with /api/fetch)
+   --------------------------------------------------------------------------- */
+function sourceLink(url) {
+  return url ? ` <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">View source</a>` : '';
 }
 
 // Load a sequence handed over from the Fetch page into its matching tab.
 // The gene symbol becomes the FASTA header so the motif metric can use it.
 function checkPreloadedSeq() {
-    const storedSeq = sessionStorage.getItem('genesim_query_seq');
-    if (!storedSeq) return null;
+  const storedSeq = sessionStorage.getItem('genesim_query_seq');
+  if (!storedSeq) return null;
 
-    const symbol    = sessionStorage.getItem('genesim_query_symbol') || '';
-    const source    = sessionStorage.getItem('genesim_query_source') || 'Database';
-    const isoform   = sessionStorage.getItem('genesim_query_isoform') || '';
-    const sourceUrl = sessionStorage.getItem('genesim_query_source_url') || '';
-    const type      = sessionStorage.getItem('genesim_query_type') === 'dna' ? 'dna' : 'protein';
+  const symbol    = sessionStorage.getItem('genesim_query_symbol') || '';
+  const source    = sessionStorage.getItem('genesim_query_source') || 'Database';
+  const isoform   = sessionStorage.getItem('genesim_query_isoform') || '';
+  const sourceUrl = sessionStorage.getItem('genesim_query_source_url') || '';
+  const type      = sessionStorage.getItem('genesim_query_type') === 'dna' ? 'dna' : 'protein';
 
-    const header = symbol ? `>${symbol}${isoform ? ' ' + isoform : ''}\n` : '';
-    const viewLink = sourceUrl ? ` · <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent); font-weight:600; text-decoration:none;">View source ↗</a>` : '';
-    drafts[type] = {
-        text:   header + storedSeq,
-        banner: `✓ Loaded ${MODES[type].name.toLowerCase()} sequence for <strong>${escapeHtml(symbol || 'gene')}</strong> (${isoform ? escapeHtml(isoform) + ' · ' : ''}${escapeHtml(source)}${viewLink}). Ready to search!`,
-    };
-    return type;
-}
-
-async function runSearch() {
-    const metrics = getSelectedMetrics();
-    if (!metrics.length) { alert('Select at least one metric.'); return; }
-
-    const mode = currentMode;
-    const topN = parseInt(document.getElementById('top-n').value);
-    const seq  = document.getElementById('gene-seq').value.trim();
-    if (!seq) {
-        alert(`Please paste or provide a ${MODES[mode].name.toLowerCase()} sequence to search against the database.\n\nYou can also click "Fetch sequence" to retrieve one from NCBI, UniProt, or Ensembl.`);
-        return;
-    }
-
-    const sortBy = document.getElementById('rank-by').value;
-    const body = { input_type: 'sequence', seq_mode: mode, sequence: seq, metrics, top_n: topN, sort_by: sortBy };
-    if (mode === 'protein') {
-        const [gapExistence, gapExtension] = document.getElementById('gap-costs').value.split(',').map(Number);
-        body.gap_existence = gapExistence;
-        body.gap_extension = gapExtension;
-    } else {
-        body.include_genomic = document.getElementById('include-genomic').checked;
-    }
-
-    showDNA(`Running ${MODES[mode].name.toLowerCase()} search...`, 'Comparing against database isoforms');
-    document.getElementById('search-btn').disabled = true;
-    document.getElementById('empty-state').classList.add('hidden');
-    document.getElementById('results-content').classList.add('hidden');
-    document.getElementById('results-search').value = '';
-
-    try {
-        const resp = await fetch('/api/search', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
-        const data = await resp.json();
-        hideDNA();
-        if (!resp.ok) {
-            lastSearch[mode] = null;
-            if (currentMode === mode) showError(data.error || 'Search failed');
-            return;
-        }
-        lastSearch[mode] = { data, metrics };
-        // The user may have switched tabs while the search was running
-        if (currentMode === mode) renderResults(data, metrics);
-        loadRecent();
-    } catch (e) {
-        hideDNA();
-        if (currentMode === mode) showError('Network error: ' + e.message);
-    } finally {
-        document.getElementById('search-btn').disabled = false;
-    }
-}
-
-function showError(msg) {
-    document.getElementById('results-content').classList.remove('hidden');
-    document.getElementById('empty-state').classList.add('hidden');
-    const eb = document.getElementById('error-box');
-    eb.className = 'alert alert-error';
-    eb.textContent = '❌ ' + msg;
-    eb.classList.remove('hidden');
-    for (const id of ['result-stats', 'results-card', 'best-match-card', 'alignment-card']) {
-        document.getElementById(id).classList.add('hidden');
-    }
-}
-
-function renderResults(data, metrics) {
-    activeMetrics = metrics;
-    allResults    = data.results;
-    activeData    = data;
-
-    document.getElementById('results-content').classList.remove('hidden');
-    document.getElementById('error-box').classList.add('hidden');
-    document.getElementById('result-stats').classList.remove('hidden');
-    document.getElementById('results-card').classList.remove('hidden');
-
-    const modeLabel = data.seq_mode === 'dna' ? 'Nucleotide' : 'Protein';
-    const unit      = data.seq_mode === 'dna' ? 'bp' : 'aa';
-
-    document.getElementById('result-stats').innerHTML = `
-        <div class="stat-chip"><div class="stat-val">${escapeHtml(data.query_label)}</div><div class="stat-label">Query</div></div>
-        <div class="stat-chip"><div class="stat-val">${data.query_length.toLocaleString()} ${unit}</div><div class="stat-label">Query Length</div></div>
-        <div class="stat-chip"><div class="stat-val">${data.total_compared}</div><div class="stat-label">${data.include_genomic === false ? 'mRNAs Compared' : 'Isoforms Compared'}</div></div>
-        <div class="stat-chip"><div class="stat-val">${modeLabel}</div><div class="stat-label">Search Type</div></div>
-        ${data.gap_costs && metrics.includes('blosum') ? `<div class="stat-chip"><div class="stat-val">${data.gap_costs[0]} / ${data.gap_costs[1]}</div><div class="stat-label">Gap Costs</div></div>` : ''}
-        ${metrics.includes('kmer') ? `<div class="stat-chip"><div class="stat-val">k = ${data.kmer_k}</div><div class="stat-label">K-mer Size</div></div>` : ''}
-    `;
-
-    renderTable(data.results, metrics);
-
-    const bm     = data.best_non_self;
-    const bmCard = document.getElementById('best-match-card');
-    if (bm) {
-        document.getElementById('best-match-info').innerHTML = `
-            <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:14px;">
-                <div><div class="text-muted text-sm">Gene</div><div class="gene-badge" style="font-size:18px">${escapeHtml(bm.gene)}</div></div>
-                <div><div class="text-muted text-sm">Isoform</div><div class="text-mono text-sm" style="margin-top:2px">${escapeHtml(bm.isoform)}</div></div>
-            </div>
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                ${Object.entries(bm.scores).map(([k,v]) => `
-                    <div style="background:var(--bg);border:1px solid var(--border-light);border-radius:8px;padding:10px 16px;">
-                        <div class="text-muted text-sm">${metricLabel(k, data)}</div>
-                        <div style="font-family:var(--mono);font-weight:600;color:${METRIC_COLORS[k]}">${v.toFixed(4)}</div>
-                    </div>
-                `).join('')}
-            </div>
-        `;
-        bmCard.classList.remove('hidden');
-    } else {
-        bmCard.classList.add('hidden');
-    }
-
-    const alignCard = document.getElementById('alignment-card');
-    if (data.alignment) {
-        document.getElementById('alignment-text').textContent = data.alignment;
-        alignCard.classList.remove('hidden');
-    } else {
-        alignCard.classList.add('hidden');
-    }
-}
-
-function renderTable(results, metrics) {
-    document.getElementById('results-thead').innerHTML = `<tr>
-        <th style="width:36px">#</th>
-        <th>Gene</th>
-        <th>Isoform</th>
-        ${metrics.map(m => `<th>${metricLabel(m, activeData)}</th>`).join('')}
-    </tr>`;
-
-    const tbody = document.getElementById('results-tbody');
-    if (!results.length) {
-        tbody.innerHTML = '';
-        document.getElementById('no-filter-results').classList.remove('hidden');
-        return;
-    }
-    document.getElementById('no-filter-results').classList.add('hidden');
-
-    tbody.innerHTML = results.map((r, i) => `
-        <tr>
-            <td class="text-muted text-sm">${i + 1}</td>
-            <td><span class="gene-badge">${escapeHtml(r.gene)}</span></td>
-            <td class="text-muted text-sm text-mono" style="font-size:11px">${escapeHtml(r.isoform)}</td>
-            ${metrics.map(m => {
-                const val   = r.scores[m] ?? 0;
-                const color = METRIC_COLORS[m];
-                return `<td>
-                    <div class="score-bar">
-                        <div class="score-bar-track">
-                            <div class="score-bar-fill" style="width:${val*100}%;background:${color}"></div>
-                        </div>
-                        <span class="score-val" style="color:${color}">${val.toFixed(4)}</span>
-                    </div>
-                </td>`;
-            }).join('')}
-        </tr>
-    `).join('');
-}
-
-function filterResults(q) {
-    if (!allResults.length) return;
-    const f = q.toLowerCase().trim();
-    if (!f) { renderTable(allResults, activeMetrics); return; }
-    renderTable(
-        allResults.filter(r =>
-            r.gene.toLowerCase().includes(f) ||
-            r.isoform.toLowerCase().includes(f)
-        ),
-        activeMetrics
-    );
-}
-
-// ── Recent searches ──
-const METRIC_ABBR = { blosum:'A', kmer:'K', edit:'E', motif:'M' };
-let recentSearches = [];
-
-async function loadRecent() {
-    const resp = await fetch('/api/recent_searches');
-    recentSearches = await resp.json();
-    const list = document.getElementById('recent-list');
-
-    if (!recentSearches.length) {
-        list.innerHTML = `<div class="text-muted text-sm" style="text-align:center; padding:12px 0">No recent searches yet.</div>`;
-        return;
-    }
-
-    list.innerHTML = recentSearches.map((s, i) => {
-        const mode = s.mode === 'dna' ? 'dna' : 'protein';
-        return `
-        <div style="display:flex; align-items:center; justify-content:space-between;
-                    padding:8px 10px; border-radius:8px; margin-bottom:4px;
-                    background:var(--bg); border:1px solid var(--border-light); cursor:pointer;"
-             onclick="rerunRecent(${i})" title="Re-run in the ${MODES[mode].name} tab">
-            <div>
-                <div style="font-weight:600; font-size:13px; color:var(--accent); font-family:var(--mono)">${escapeHtml(s.query)}</div>
-                <div class="text-muted text-sm">${MODES[mode].icon} ${MODES[mode].name} · ${s.metrics.map(m => METRIC_ABBR[m]||m).join('+')} · ${s.results} results</div>
-            </div>
-            <div class="text-muted text-sm">${escapeHtml(s.time)}</div>
-        </div>`;
-    }).join('');
+  const header = symbol ? `>${symbol}${isoform ? ' ' + isoform : ''}\n` : '';
+  drafts[type] = {
+    text:   header + storedSeq,
+    banner: `Loaded the ${MODES[type].name.toLowerCase()} sequence for <strong>${esc(symbol || 'gene')}</strong> (${isoform ? esc(isoform) + ', ' : ''}${esc(source)}).${sourceLink(sourceUrl)}`,
+  };
+  return type;
 }
 
 // Fetch a gene symbol or accession number into the search box. Accessions
 // decide their own type, so the sequence lands in the matching tab.
 // Returns true on success.
 async function loadById(id, mode, { quietErrors = false } = {}) {
-    showDNA(`Loading ${id}...`, 'Retrieving sequence');
-    try {
-        const resp = await fetch('/api/fetch', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: id, source: 'ncbi', seq_type: mode })
-        });
-        const data = await resp.json();
-        hideDNA();
-        if (!resp.ok || !data.sequence) {
-            const msg = `Could not fetch "${id}": ${data.error || 'no sequence returned'}`;
-            if (quietErrors) return msg;
-            showError(msg);
-            return false;
-        }
-        const target = data.seq_type === 'dna' ? 'dna' : 'protein';
-        if (target !== currentMode) {
-            // Leave the typed ID behind rather than copying it into the other tab
-            document.getElementById('gene-seq').value = '';
-            drafts[currentMode] = { text: '', banner: '' };
-            switchMode(target);
-        }
-        document.getElementById('gene-seq').value = `>${data.symbol} ${data.isoform_id}\n${data.sequence}`;
-        const viewLink = data.source_url ? ` · <a href="${escapeHtml(data.source_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent); font-weight:600; text-decoration:none;">View source ↗</a>` : '';
-        const note = data.note ? `<br>ℹ ${escapeHtml(data.note)}` : '';
-        setBanner(`✓ Loaded ${MODES[target].name.toLowerCase()} sequence for <strong>${escapeHtml(data.symbol)}</strong> (${escapeHtml(data.isoform_id)} · ${escapeHtml(data.source)}${viewLink}).${note}`);
-        onSeqInput();
-        return true;
-    } catch (e) {
-        hideDNA();
-        if (quietErrors) return 'Network error: ' + e.message;
-        showError('Network error: ' + e.message);
-        return false;
+  GS.showDNA(`Loading ${id}`, 'Retrieving the sequence from NCBI');
+  try {
+    const resp = await fetch('/api/fetch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: id, source: 'ncbi', seq_type: mode })
+    });
+    const data = await resp.json();
+    GS.hideDNA();
+    if (!resp.ok || !data.sequence) {
+      const msg = `Couldn't fetch "${id}": ${data.error || 'no sequence returned'}`;
+      if (quietErrors) return msg;
+      showError(msg);
+      return false;
     }
+    const target = data.seq_type === 'dna' ? 'dna' : 'protein';
+    if (target !== currentMode) {
+      // Leave the typed ID behind rather than copying it into the other tab
+      $('gene-seq').value = '';
+      drafts[currentMode] = { text: '', banner: '' };
+      switchMode(target);
+    }
+    expandComposer(false);
+    $('gene-seq').value = `>${data.symbol} ${data.isoform_id}\n${data.sequence}`;
+    const note = data.note ? `<br>${esc(data.note)}` : '';
+    setBanner(`Loaded the ${MODES[target].name.toLowerCase()} sequence for <strong>${esc(data.symbol)}</strong> (${esc(data.isoform_id)}, ${esc(data.source)}).${sourceLink(data.source_url)}${note}`);
+    onSeqInput();
+    return true;
+  } catch (e) {
+    GS.hideDNA();
+    if (quietErrors) return 'Network error: ' + e.message;
+    showError('Network error: ' + e.message);
+    return false;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Run a search (request body identical to the original)
+   --------------------------------------------------------------------------- */
+function pipelineSteps(mode, metrics, label, includeGenomic) {
+  const steps = [];
+  if (mode === 'protein') {
+    steps.push({ label: 'Pre-filter candidates', detail: `${MODES.protein.kmerK}-mer index keeps the 80 closest protein isoforms`, color: 'var(--ink-4)' });
+  } else {
+    steps.push({ label: 'Load nucleotide sequences', detail: includeGenomic ? 'mRNAs and genomic gene sequences' : 'mRNAs only, genomic sequences excluded', color: 'var(--ink-4)' });
+  }
+  if (metrics.includes('blosum')) steps.push({ label: mode === 'dna' ? 'DNA local alignment' : 'BLOSUM62 local alignment', detail: 'Runs in parallel across CPU cores', color: METRIC_HEX.blosum });
+  if (metrics.includes('kmer'))   steps.push({ label: `K-mer similarity, k = ${MODES[mode].kmerK}`, detail: 'Jaccard index of shared words', color: METRIC_HEX.kmer });
+  if (metrics.includes('edit'))   steps.push({ label: 'Edit distance', detail: 'Normalised Levenshtein, in parallel', color: METRIC_HEX.edit });
+  if (metrics.includes('motif'))  steps.push({ label: 'Motif comparison', detail: label ? `JASPAR promoter sites for ${label}` : 'JASPAR promoter sites', color: METRIC_HEX.motif });
+  steps.push({ label: 'Rank and align the best match', color: 'var(--ink-4)' });
+  return steps;
+}
+
+async function runSearch() {
+  const metrics = getSelectedMetrics();
+  if (!metrics.length) { showInlineProblem('Select at least one metric to run.'); return; }
+
+  const mode = currentMode;
+  const topN = parseInt($('top-n').value, 10);
+  const seq  = $('gene-seq').value.trim();
+  if (!seq) {
+    expandComposer(false);
+    showInlineProblem(`Paste or load a ${MODES[mode].name.toLowerCase()} sequence first, or use Fetch sequence to retrieve one from NCBI, UniProt or Ensembl.`);
+    $('gene-seq').focus();
+    return;
+  }
+
+  const sortBy = getRankBy();
+  const body = { input_type: 'sequence', seq_mode: mode, sequence: seq, metrics, top_n: topN, sort_by: sortBy };
+  if (mode === 'protein') {
+    const [gapExistence, gapExtension] = $('gap-costs').value.split(',').map(Number);
+    body.gap_existence = gapExistence;
+    body.gap_extension = gapExtension;
+  } else {
+    body.include_genomic = $('include-genomic').checked;
+  }
+
+  const label = fastaLabel(seq);
+  const parsedLen = parseSequence(seq).length;
+  const controller = new AbortController();
+  searchAbort = controller;
+  const hints = [{ after: 12000, text: 'Alignment-based metrics take longer on long sequences.' }];
+  if (mode === 'dna') hints.push({ after: 25000, text: 'Nucleotide searches compare full-length mRNAs, so they can take several minutes, especially with edit distance.' });
+
+  GS.showDNA(
+    `Running ${MODES[mode].name.toLowerCase()} similarity search`,
+    `${label || 'Unnamed query'}, ${parsedLen.toLocaleString('en-US')} ${MODES[mode].unit}, ranked by ${rankName(effectiveRank(metrics, sortBy))}`,
+    {
+      steps: pipelineSteps(mode, metrics, label, body.include_genomic),
+      hints,
+      onCancel: () => controller.abort()
+    }
+  );
+  $('search-btn').disabled = true;
+  $('error-box').classList.add('hidden');
+  $('results-search').value = '';
+  const t0 = performance.now();
+
+  try {
+    const resp = await fetch('/api/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    const data = await resp.json();
+    const elapsed = (performance.now() - t0) / 1000;
+    GS.hideDNA();
+    if (!resp.ok) {
+      lastSearch[mode] = null;
+      if (currentMode === mode) showError(data.error || 'The search failed.');
+      return;
+    }
+    data._rankedBy = effectiveRank(metrics, sortBy);
+    lastSearch[mode] = { data, metrics, elapsed };
+    try { localStorage.setItem('genesim_last_search', JSON.stringify({ data, metrics, elapsed, at: Date.now() })); } catch (e) {}
+    // The user may have switched tabs while the search was running
+    if (currentMode === mode) {
+      sortState = { key: null, dir: 'desc' };
+      renderResults(data, metrics, elapsed);
+      collapseComposer();
+      requestAnimationFrame(() => $('results-area').scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    }
+    loadRecent();
+  } catch (e) {
+    GS.hideDNA();
+    if (e.name === 'AbortError') {
+      if (currentMode === mode) showError('Stopped waiting for this search. The server may still finish it, and it will then appear under Recent.', 'warn');
+    } else if (currentMode === mode) {
+      showError('Network error: ' + e.message);
+    }
+  } finally {
+    $('search-btn').disabled = false;
+    searchAbort = null;
+  }
+}
+
+function showInlineProblem(msg) {
+  const box = $('detected-type-label');
+  box.innerHTML = `<span class="bad">${esc(msg)}</span>`;
+  GS.toast(msg, 2600);
+}
+
+function showError(msg, tone) {
+  $('results-content').classList.add('hidden');
+  $('empty-state').classList.add('hidden');
+  const eb = $('error-box');
+  eb.className = tone === 'warn' ? 'notice notice-warn' : 'notice notice-err';
+  $('error-text').textContent = msg;
+  expandComposer(false);
+  requestAnimationFrame(() => eb.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+}
+
+/* ---------------------------------------------------------------------------
+   Composer collapse / expand
+   --------------------------------------------------------------------------- */
+function collapseComposer() {
+  const data = activeData;
+  if (!data) return;
+  const cfg = MODES[data.seq_mode === 'dna' ? 'dna' : 'protein'];
+  $('cs-mode').textContent = cfg.name;
+  $('cs-label').textContent = data.query_label === 'custom_sequence' ? 'Unnamed sequence' : data.query_label;
+  $('cs-seq').textContent = parseSequence($('gene-seq').value).slice(0, 160);
+  $('cs-len').textContent = `${data.query_length.toLocaleString('en-US')} ${cfg.unit}`;
+  $('cs-dots').innerHTML = activeMetrics.map(m => `<i style="--c:${METRIC_HEX[m]}" title="${esc(metricLabel(m, data))}"></i>`).join('');
+  $('composer').classList.add('collapsed');
+}
+function expandComposer(focus) {
+  $('composer').classList.remove('collapsed');
+  queueMirror();
+  if (focus) {
+    $('composer').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => $('gene-seq').focus({ preventScroll: true }), 250);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Results
+   --------------------------------------------------------------------------- */
+function isSelf(r, data) {
+  return r.gene === data.query_label;
+}
+
+function isoformSource(iso) {
+  const id = String(iso || '');
+  if (/^(sp|tr)\|/.test(id)) {
+    const acc = id.split('|')[1];
+    return { name: 'UniProt', url: `https://www.uniprot.org/uniprotkb/${acc}/entry` };
+  }
+  if (/^(NP|XP|YP|AP|WP)_/.test(id)) return { name: 'NCBI', url: `https://www.ncbi.nlm.nih.gov/protein/${id}` };
+  if (/^(NM|XM|NR|XR|NG|NC)_/.test(id)) return { name: 'NCBI', url: `https://www.ncbi.nlm.nih.gov/nuccore/${id}` };
+  if (/^ENS[GTP]\d+/.test(id)) return { name: 'Ensembl', url: `https://www.ensembl.org/id/${id.split('.')[0]}` };
+  if (/^(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})(?:-\d+)?$/.test(id)) {
+    return { name: 'UniProt', url: `https://www.uniprot.org/uniprotkb/${id}/entry` };
+  }
+  return { name: null, url: null };
+}
+
+function renderResults(data, metrics, elapsed) {
+  activeMetrics = metrics;
+  allResults    = data.results.map((r, i) => ({ ...r, _rank: i + 1 }));
+  activeData    = data;
+
+  $('results-content').classList.remove('hidden');
+  $('empty-state').classList.add('hidden');
+  $('error-box').classList.add('hidden');
+
+  const mode = data.seq_mode === 'dna' ? 'dna' : 'protein';
+  const cfg = MODES[mode];
+  if (!data._rankedBy) data._rankedBy = effectiveRank(metrics, getRankBy());
+
+  // Header
+  const rk = data._rankedBy;
+  const pill = $('res-rank-pill');
+  pill.style.setProperty('--c', METRIC_HEX[rk] || 'var(--ink-4)');
+  pill.textContent = rk ? metricLabel(rk, data) : '—';
+  $('res-query').textContent = data.query_label === 'custom_sequence' ? 'Unnamed sequence' : data.query_label;
+  $('res-isoform').textContent = data.isoform_id && data.isoform_id !== data.query_label && data.isoform_id !== 'custom' ? data.isoform_id : '';
+
+  // Facts strip
+  const facts = [
+    ['Query length', `${data.query_length.toLocaleString('en-US')}<small>${cfg.unit}</small>`],
+    [data.include_genomic === false ? 'mRNAs compared' : 'Isoforms compared', data.total_compared.toLocaleString('en-US')],
+    ['Search type', cfg.name],
+  ];
+  if (data.gap_costs && metrics.includes('blosum')) facts.push(['Gap costs', `${data.gap_costs[0]} / ${data.gap_costs[1]}`]);
+  if (metrics.includes('kmer')) facts.push(['K-mer size', `k = ${data.kmer_k}`]);
+  if (elapsed !== undefined && elapsed !== null) facts.push(['Search time', `${elapsed < 10 ? elapsed.toFixed(1) : Math.round(elapsed)}<small>s</small>`]);
+  $('result-stats').innerHTML = facts.map(([k, v]) => `<div class="fact"><div class="k">${esc(k)}</div><div class="v">${v}</div></div>`).join('');
+
+  $('table-title').textContent = `Top ${data.results.length} ${data.results.length === 1 ? 'match' : 'matches'}`;
+  $('table-sub').textContent = `of ${data.total_compared.toLocaleString('en-US')} ${data.include_genomic === false ? 'mRNAs' : 'isoforms'}`;
+
+  renderTable();
+  renderBestMatch(data, metrics);
+}
+
+function sortedFilteredResults() {
+  const f = ($('results-search').value || '').toLowerCase().trim();
+  let rows = allResults.slice();
+  if (f) rows = rows.filter(r => r.gene.toLowerCase().includes(f) || String(r.isoform).toLowerCase().includes(f));
+  if (sortState.key) {
+    const k = sortState.key, dir = sortState.dir === 'asc' ? 1 : -1;
+    rows.sort((a, b) => {
+      if (k === 'gene') return dir * a.gene.localeCompare(b.gene);
+      if (k === 'rank') return dir * (a._rank - b._rank);
+      return dir * ((a.scores[k] ?? 0) - (b.scores[k] ?? 0));
+    });
+  }
+  return rows;
+}
+
+function renderTable() {
+  const data = activeData, metrics = activeMetrics;
+  if (!data) return;
+  const rankedBy = data._rankedBy;
+  const chevUp = '<svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg>';
+  const sortCls = (k) => sortState.key === k ? `sorted ${sortState.dir}` : '';
+
+  $('results-thead').innerHTML = `<tr>
+    <th class="num-col ${sortCls('rank')}"><button class="sort" onclick="sortBy('rank')">#${chevUp}</button></th>
+    <th class="${sortCls('gene')}"><button class="sort" onclick="sortBy('gene')">Gene${chevUp}</button></th>
+    <th>Isoform</th>
+    ${metrics.map(m => `<th class="${sortCls(m)} ${m === rankedBy ? 'ranked' : ''}" style="--c:${METRIC_HEX[m]}; --cw:${METRIC_WASH[m]}">
+        <button class="sort" onclick="sortBy('${m}')" title="Sort by ${esc(metricLabel(m, data))}"><span class="dot"></span>${esc(metricLabel(m, data))}${chevUp}</button></th>`).join('')}
+    <th aria-label="Details"></th>
+  </tr>`;
+
+  const rows = sortedFilteredResults();
+  const tbody = $('results-tbody');
+  $('no-filter-results').classList.toggle('hidden', rows.length > 0);
+  if (!rows.length) { tbody.innerHTML = ''; return; }
+
+  tbody.innerHTML = rows.map(r => {
+    const self = isSelf(r, data);
+    const src = isoformSource(r.isoform);
+    const key = `${r.gene}|${r.isoform}`;
+    return `<tr class="${self ? 'is-self' : ''} ${selectedRow === key ? 'selected' : ''}" data-key="${esc(key)}" tabindex="0"
+                onclick="openDrawer(${r._rank - 1})" onkeydown="if(event.key==='Enter'){openDrawer(${r._rank - 1})}">
+      <td class="rank">${r._rank}</td>
+      <td><div class="gene-cell"><span class="gene-sym">${esc(r.gene)}</span>${self ? '<span class="tag self-tag">Query gene</span>' : ''}</div></td>
+      <td><div class="iso-cell"><span class="iso-id">${esc(r.isoform)}</span>${src.name ? `<span class="tag src-tag">${src.name}</span>` : ''}${src.url ? `<a class="iso-link" href="${esc(src.url)}" target="_blank" rel="noopener noreferrer" title="Open on ${src.name}" onclick="event.stopPropagation()"><svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"/></svg></a>` : ''}</div></td>
+      ${metrics.map(m => {
+        const val = r.scores[m] ?? 0;
+        return `<td class="${m === rankedBy ? 'ranked' : ''}" style="--c:${METRIC_HEX[m]}; --cw:${METRIC_WASH[m]}">
+          <div class="score"><span class="score-v">${val.toFixed(4)}</span><span class="score-track"><i style="width:${Math.max(0, Math.min(1, val)) * 100}%"></i></span></div></td>`;
+      }).join('')}
+      <td class="chev"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></td>
+    </tr>`;
+  }).join('');
+}
+
+function sortBy(key) {
+  if (sortState.key === key) {
+    if ((key === 'rank' || key === 'gene') ? sortState.dir === 'asc' : sortState.dir === 'desc') {
+      sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortState = { key: null, dir: 'desc' };   // third click: back to server ranking
+    }
+  } else {
+    sortState = { key, dir: (key === 'rank' || key === 'gene') ? 'asc' : 'desc' };
+  }
+  renderTable();
+}
+
+function filterResults() { renderTable(); }
+
+function downloadCSV() {
+  if (!activeData) return;
+  const metrics = activeMetrics;
+  const head = ['rank', 'gene', 'isoform', ...metrics.map(m => metricLabel(m, activeData))];
+  const lines = [head.join(',')];
+  allResults.forEach(r => {
+    lines.push([r._rank, r.gene, r.isoform, ...metrics.map(m => (r.scores[m] ?? 0).toFixed(4))]
+      .map(v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v).join(','));
+  });
+  const name = (activeData.query_label || 'query').replace(/[^A-Za-z0-9._-]+/g, '_');
+  GS.download(`genesim_${name}_${activeData.seq_mode}.csv`, lines.join('\n'), 'text/csv');
+}
+
+/* ---------------------------------------------------------------------------
+   Best match and alignment viewer
+   --------------------------------------------------------------------------- */
+function gaugeHTML(m, v, data) {
+  const val = v ?? 0;
+  return `<div class="gauge" style="--c:${METRIC_HEX[m]}; --cw:${METRIC_WASH[m]}">
+    <div class="k">${esc(metricLabel(m, data))}</div>
+    <div class="v">${val.toFixed(4)}</div>
+    <div class="bar"><i style="width:${Math.max(0, Math.min(1, val)) * 100}%"></i></div></div>`;
+}
+
+function renderBestMatch(data, metrics) {
+  const bm = data.best_non_self;
+  const card = $('best-match-card');
+  if (!bm) { card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  const src = isoformSource(bm.isoform);
+  $('best-match-title').innerHTML = `<span class="sym">${esc(bm.gene)}</span><span class="iso">${esc(bm.isoform)}</span>
+    ${src.url ? `<a class="iso-link" href="${esc(src.url)}" target="_blank" rel="noopener noreferrer" title="Open on ${src.name}"><svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"/></svg></a>` : ''}`;
+  $('best-match-info').innerHTML = Object.entries(bm.scores).map(([k, v]) => gaugeHTML(k, v, data)).join('');
+
+  const alignCard = $('alignment-card');
+  if (data.alignment) {
+    alignCard.classList.remove('hidden');
+    alnState = { raw: data.alignment, parsed: parseAlignment(data.alignment), view: 'fmt', showAll: false,
+                 qName: data.query_label === 'custom_sequence' ? 'Query' : data.query_label, tName: bm.gene };
+    $('aln-view-fmt').setAttribute('aria-pressed', 'true');
+    $('aln-view-raw').setAttribute('aria-pressed', 'false');
+    renderAlignment();
+  } else {
+    alignCard.classList.add('hidden');
+    alnState = null;
+  }
+}
+
+// Parses Biopython's printed alignment (format checked against Biopython 1.87).
+// app.py calls aligner.align(query, hit), so Biopython's "target" row is the
+// user's query and its "query" row is the database hit. Each block has three
+// lines; the start coordinate is 0-based and only the last block also prints
+// the end coordinate:
+//   target            1 EEPQSDPSVEPP...
+//                     0 |.|.|.|..|.|...
+//   query           445 ESPLSPPPEESP...
+//   ...
+//   target           56 DPGPDEAPRM...PLS  94
+// Returns null if anything doesn't fit, so the text view is shown instead.
+function parseAlignment(text) {
+  try {
+    const lines = String(text).replace(/\r\n?/g, '\n').split('\n').filter(l => l.trim());
+    const rows = [];
+    for (const line of lines) {
+      const m = line.match(/^(\S*)\s+(\d+) (\S+)(?:\s+(\d+))?\s*$/);
+      if (!m) return null;
+      rows.push({ name: m[1], start: +m[2], seq: m[3], end: m[4] === undefined ? null : +m[4] });
+    }
+    if (!rows.length || rows.length % 3 !== 0) return null;
+
+    let a = '', mid = '', b = '';
+    let ia = rows[0].start, ib = rows[2].start;
+    for (let i = 0; i < rows.length; i += 3) {
+      const [ra, rm, rb] = [rows[i], rows[i + 1], rows[i + 2]];
+      // Sequence rows are named, the match row isn't; all three are the same width
+      if (!ra.name || rm.name || !rb.name) return null;
+      if (ra.seq.length !== rm.seq.length || ra.seq.length !== rb.seq.length) return null;
+      // The match row counts alignment columns; each sequence row continues
+      // where the previous block ended (gaps don't advance the position)
+      if (rm.start !== a.length || ra.start !== ia || rb.start !== ib) return null;
+      a += ra.seq; mid += rm.seq; b += rb.seq;
+      ia += ra.seq.replace(/-/g, '').length;
+      ib += rb.seq.replace(/-/g, '').length;
+    }
+    const last = rows.length - 3;
+    // When the end coordinates are printed, they must agree with the residues counted
+    if ((rows[last].end !== null && rows[last].end !== ia) ||
+        (rows[last + 2].end !== null && rows[last + 2].end !== ib) ||
+        (rows[last + 1].end !== null && rows[last + 1].end !== a.length)) return null;
+    return { a, mid, b, aStart: rows[0].start, aEnd: ia, bStart: rows[2].start, bEnd: ib };
+  } catch (e) { return null; }
+}
+
+function colClass(p, i) {
+  const c = p.mid[i];
+  if (c === '|') return 'id';
+  if (c === '-' || p.a[i] === '-' || p.b[i] === '-') return 'gp';
+  return 'mm';
+}
+
+function runsHTML(str, classes) {
+  let html = '', run = '', cls = null;
+  for (let i = 0; i < str.length; i++) {
+    if (classes[i] !== cls) { if (run) html += `<span class="${cls}">${esc(run)}</span>`; run = ''; cls = classes[i]; }
+    run += str[i];
+  }
+  if (run) html += `<span class="${cls}">${esc(run)}</span>`;
+  return html;
+}
+
+function alnChunkSize() {
+  const view = $('aln-view');
+  const w = (view && view.clientWidth) || 900;
+  const probe = document.createElement('span');
+  probe.style.cssText = 'position:absolute;visibility:hidden;font-family:var(--font-mono);font-size:13px;letter-spacing:.06em;white-space:pre';
+  probe.textContent = 'ACDEFGHIKL'.repeat(10);
+  document.body.appendChild(probe);
+  const cw = probe.getBoundingClientRect().width / 100 || 8.6;
+  probe.remove();
+  const labels = window.innerWidth < 640 ? 52 + 40 + 40 + 24 + 36 : 76 + 56 + 56 + 36 + 36;
+  const n = Math.floor((w - labels) / cw / 10) * 10;
+  return Math.max(30, Math.min(100, n));
+}
+
+// Residues per line: as many as fit, then evened out so the last line isn't a
+// short leftover (e.g. 104 columns -> 60 + 44 rather than 90 + 14).
+function alnBlockSize(L) {
+  const max = alnChunkSize();
+  const blocks = Math.max(1, Math.ceil(L / max));
+  return Math.min(max, Math.max(10, Math.ceil(L / blocks / 10) * 10));
+}
+
+function renderAlignment() {
+  if (!alnState) return;
+  const view = $('aln-view');
+  const p = alnState.parsed;
+
+  if (alnState.view === 'raw' || !p) {
+    const note = (!p && alnState.view !== 'raw')
+      ? `<div class="notice notice-info" style="margin:8px 12px 4px"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg><div>This alignment couldn't be laid out, so it's shown as the text Biopython returned.</div></div>` : '';
+    view.innerHTML = `${note}<pre class="aln-raw">${esc(alnState.raw)}</pre>`;
+    $('aln-overview').classList.toggle('hidden', !p);
+    $('aln-stats').innerHTML = p ? alnStatsHTML(p) : '<span class="hint">Showing the alignment as returned by the server.</span>';
+    if (p) drawOverview(p);
+    return;
+  }
+  $('aln-overview').classList.remove('hidden');
+  $('aln-stats').innerHTML = alnStatsHTML(p);
+  drawOverview(p);
+
+  const L = p.a.length;
+  const n = alnBlockSize(L);
+  const classes = Array.from({ length: L }, (_, i) => colClass(p, i));
+  const midChars = p.mid.split('').map((c, i) => classes[i] === 'id' ? '|' : (classes[i] === 'gp' ? ' ' : '·'));
+  let ia = p.aStart, ib = p.bStart;
+  const blocks = [];
+  const maxBlocks = alnState.showAll ? Infinity : 80;
+  for (let s = 0; s < L; s += n) {
+    const e = Math.min(L, s + n);
+    const segA = p.a.slice(s, e), segB = p.b.slice(s, e), segCls = classes.slice(s, e);
+    const aFrom = ia + 1, bFrom = ib + 1;
+    ia += segA.replace(/-/g, '').length; ib += segB.replace(/-/g, '').length;
+    if (blocks.length >= maxBlocks) continue;
+    blocks.push(`<div class="aln-block" data-start="${s}">
+      <div class="aln-row"><span class="aln-name" title="${esc(alnState.qName)}">${esc(alnState.qName)}</span><span class="aln-pos">${aFrom}</span><span class="aln-seq">${runsHTML(segA, segCls)}</span><span class="aln-pos end">${ia}</span></div>
+      <div class="aln-row"><span></span><span></span><span class="aln-mid">${runsHTML(midChars.slice(s, e).join(''), segCls)}</span><span></span></div>
+      <div class="aln-row"><span class="aln-name" title="${esc(alnState.tName)}">${esc(alnState.tName)}</span><span class="aln-pos">${bFrom}</span><span class="aln-seq">${runsHTML(segB, segCls)}</span><span class="aln-pos end">${ib}</span></div>
+    </div>`);
+  }
+  const total = Math.ceil(L / n);
+  const more = total > blocks.length
+    ? `<div class="aln-more"><button class="btn btn-secondary btn-sm" onclick="alnState.showAll=true; renderAlignment()">Show all ${total} blocks</button></div>` : '';
+  view.innerHTML = blocks.join('') + more;
+}
+
+function alnStatsHTML(p) {
+  const L = p.a.length;
+  let id = 0, gp = 0;
+  for (let i = 0; i < L; i++) { const c = colClass(p, i); if (c === 'id') id++; else if (c === 'gp') gp++; }
+  const mm = L - id - gp;
+  const pct = (x) => (100 * x / Math.max(1, L)).toFixed(1);
+  const st = (k, v, s) => `<div class="aln-stat"><div class="k">${k}</div><div class="v">${v}${s ? `<small>${s}</small>` : ''}</div></div>`;
+  return st('Aligned columns', L.toLocaleString('en-US')) +
+         st('Identity', `${pct(id)}%`, `${id.toLocaleString('en-US')}`) +
+         st('Substitutions', `${pct(mm)}%`, `${mm.toLocaleString('en-US')}`) +
+         st('Gaps', `${pct(gp)}%`, `${gp.toLocaleString('en-US')}`) +
+         st('Query range', `${(p.aStart + 1).toLocaleString('en-US')}–${p.aEnd.toLocaleString('en-US')}`) +
+         st('Match range', `${(p.bStart + 1).toLocaleString('en-US')}–${p.bEnd.toLocaleString('en-US')}`);
+}
+
+function drawOverview(p) {
+  const canvas = $('aln-canvas');
+  const rect = canvas.getBoundingClientRect();
+  const W = Math.max(100, Math.round(rect.width)), H = 34;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#F1F4F8'; ctx.fillRect(0, 0, W, H);
+  const L = p.a.length;
+  const cls = Array.from({ length: L }, (_, i) => colClass(p, i));
+  const win = Math.max(3, Math.round(L / 60));               // sliding window in columns
+  const pts = Math.min(W, 400);
+  const top = 3, base = H - 4, h = base - top;
+  const ident = [], gaps = [];
+  for (let k = 0; k < pts; k++) {
+    const c = Math.round((k / (pts - 1)) * (L - 1));
+    const s0 = Math.max(0, c - win), s1 = Math.min(L, c + win + 1);
+    let id = 0, gp = 0;
+    for (let i = s0; i < s1; i++) { if (cls[i] === 'id') id++; else if (cls[i] === 'gp') gp++; }
+    ident.push(id / (s1 - s0)); gaps.push(gp / (s1 - s0));
+  }
+  const X = (k) => (k / (pts - 1)) * W;
+  // 50 % identity guide
+  ctx.strokeStyle = '#DCE2EA'; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, base - h * 0.5); ctx.lineTo(W, base - h * 0.5); ctx.stroke(); ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(0, base);
+  ident.forEach((f, k) => ctx.lineTo(X(k), base - f * h));
+  ctx.lineTo(W, base); ctx.closePath();
+  ctx.fillStyle = 'rgba(90,75,219,.16)'; ctx.fill();
+  ctx.beginPath(); ident.forEach((f, k) => k ? ctx.lineTo(X(k), base - f * h) : ctx.moveTo(0, base - f * h));
+  ctx.strokeStyle = '#5A4BDB'; ctx.lineWidth = 1.6; ctx.stroke();
+  gaps.forEach((g, k) => { if (g > 0.15) { ctx.fillStyle = `rgba(152,161,179,${Math.min(1, g * 2)})`; ctx.fillRect(X(k) - W / pts / 2, base + 1, W / pts + 0.5, 3); } });
+  $('ov-start').textContent = `Column 1`;
+  $('ov-end').textContent = `Column ${L.toLocaleString('en-US')}`;
+}
+
+function setAlnView(v) {
+  if (!alnState) return;
+  alnState.view = v;
+  $('aln-view-fmt').setAttribute('aria-pressed', v === 'fmt' ? 'true' : 'false');
+  $('aln-view-raw').setAttribute('aria-pressed', v === 'raw' ? 'true' : 'false');
+  renderAlignment();
+}
+function copyAlignment() { if (alnState) GS.copy(alnState.raw, 'Alignment copied'); }
+
+/* ---------------------------------------------------------------------------
+   Gene drawer
+   --------------------------------------------------------------------------- */
+async function openDrawer(index) {
+  const r = allResults[index];
+  if (!r || !activeData) return;
+  const data = activeData;
+  selectedRow = `${r.gene}|${r.isoform}`;
+  renderTable();
+  drawerState = { gene: r.gene, isoform: r.isoform, mode: data.seq_mode, isoforms: [] };
+
+  $('drawer-kicker').textContent = `Rank ${r._rank} of ${allResults.length}${isSelf(r, data) ? ', the query gene' : ''}`;
+  $('drawer-sym').textContent = r.gene;
+  $('drawer-org').textContent = '';
+  $('drawer-db-link').href = `/database#${encodeURIComponent(r.gene)}`;
+  $('drawer-body').innerHTML = `
+    <div class="drawer-scores">${activeMetrics.map(m => gaugeHTML(m, r.scores[m], data)).join('')}</div>
+    <div><div class="skeleton" style="width:90%"></div><div class="skeleton" style="width:70%; margin-top:10px"></div><div class="skeleton" style="width:80%; margin-top:10px"></div></div>`;
+
+  $('drawer').classList.add('open');
+  $('drawer').setAttribute('aria-hidden', 'false');
+  $('drawer-backdrop').classList.add('open');
+  setTimeout(() => $('drawer').querySelector('.btn-icon').focus({ preventScroll: true }), 60);
+
+  try {
+    const resp = await fetch('/api/gene/' + encodeURIComponent(r.gene));
+    const info = await resp.json();
+    if (!drawerState || drawerState.gene !== r.gene) return;
+    if (!resp.ok || info.error) throw new Error(info.error || 'Gene not found');
+    drawerState.isoforms = info.isoforms || [];
+    $('drawer-org').textContent = info.organism || '';
+    const groups = [['protein', 'Protein isoforms', 'aa'], ['dna', 'Nucleotide sequences', 'bp']];
+    const groupHTML = groups.map(([type, title, unit]) => {
+      const list = drawerState.isoforms.filter(i => i.type === type);
+      if (!list.length) return '';
+      return `<div class="iso-group"><h4>${title}<span>${list.length}</span></h4><div class="iso-list">
+        ${list.map(iso => `<div class="iso-row ${iso.isoform_id === r.isoform && type === data.seq_mode ? 'current' : ''}">
+          <div style="min-width:0"><div class="iid" title="${esc(iso.isoform_id)}">${esc(iso.isoform_id)}</div>
+          <div class="imeta">${esc(iso.source)}, ${iso.length ? iso.length.toLocaleString('en-US') + ' ' + unit : 'length unknown'}${iso.isoform_id === r.isoform && type === data.seq_mode ? ', this match' : ''}</div></div>
+          <div class="iact">
+            <button class="btn btn-ghost btn-sm" onclick="copyIsoform('${esc(r.gene)}','${esc(iso.isoform_id)}','${type}')" title="Copy as FASTA">Copy</button>
+            <button class="btn btn-ghost btn-sm" onclick="useIsoform('${esc(r.gene)}','${esc(iso.isoform_id)}','${type}')" title="Load into the search editor">Use</button>
+          </div></div>`).join('')}
+      </div></div>`;
+    }).join('');
+    $('drawer-body').innerHTML = `
+      <div class="drawer-scores">${activeMetrics.map(m => gaugeHTML(m, r.scores[m], data)).join('')}</div>
+      ${info.description ? `<p class="drawer-desc">${esc(info.description)}</p>` : ''}
+      ${groupHTML || '<p class="hint">No isoforms are stored for this gene.</p>'}`;
+  } catch (e) {
+    if (!drawerState || drawerState.gene !== r.gene) return;
+    $('drawer-body').innerHTML = `
+      <div class="drawer-scores">${activeMetrics.map(m => gaugeHTML(m, r.scores[m], data)).join('')}</div>
+      <div class="notice notice-err"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg><div>Couldn't load gene details: ${esc(e.message)}</div></div>`;
+  }
+}
+
+function closeDrawer() {
+  $('drawer').classList.remove('open');
+  $('drawer').setAttribute('aria-hidden', 'true');
+  $('drawer-backdrop').classList.remove('open');
+  if (selectedRow) { selectedRow = null; if (activeData) renderTable(); }
+  drawerState = null;
+}
+
+async function fetchIsoformSeq(symbol, isoformId, type) {
+  const url = `/api/gene/${encodeURIComponent(symbol)}/sequence?isoform_id=${encodeURIComponent(isoformId)}&type=${type}`;
+  const resp = await fetch(url);
+  const data = await resp.json();
+  if (!resp.ok || data.error) throw new Error(data.error || 'Sequence not found');
+  return data.sequence;
+}
+
+async function copyIsoform(symbol, isoformId, type) {
+  try {
+    const seq = await fetchIsoformSeq(symbol, isoformId, type);
+    GS.copy(`>${symbol} ${isoformId}\n${seq.match(/.{1,60}/g).join('\n')}`, `${isoformId} copied as FASTA`);
+  } catch (e) { GS.toast(`Couldn't copy: ${e.message}`); }
+}
+
+async function useIsoform(symbol, isoformId, type) {
+  try {
+    const seq = await fetchIsoformSeq(symbol, isoformId, type);
+    closeDrawer();
+    const target = type === 'dna' ? 'dna' : 'protein';
+    if (target !== currentMode) switchMode(target);
+    expandComposer(false);
+    $('gene-seq').value = `>${symbol} ${isoformId}\n${seq}`;
+    setBanner(`Loaded <strong>${esc(symbol)}</strong> (${esc(isoformId)}) from the local database.`);
+    onSeqInput();
+    $('composer').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    GS.toast(`${symbol} is ready to search`);
+  } catch (e) { GS.toast(`Couldn't load the sequence: ${e.message}`); }
+}
+
+function useDrawerIsoform() {
+  if (!drawerState) return;
+  const same = drawerState.isoforms.find(i => i.isoform_id === drawerState.isoform && i.type === drawerState.mode);
+  const pick = same || drawerState.isoforms.find(i => i.type === drawerState.mode) || drawerState.isoforms[0];
+  if (!pick) { GS.toast('No stored sequence for this gene'); return; }
+  useIsoform(drawerState.gene, pick.isoform_id, pick.type);
+}
+
+/* ---------------------------------------------------------------------------
+   Recent searches (same endpoints and re-run behaviour)
+   --------------------------------------------------------------------------- */
+let recentSearches = [];
+
+async function loadRecent() {
+  try {
+    const resp = await fetch('/api/recent_searches');
+    recentSearches = await resp.json();
+  } catch (e) { recentSearches = []; }
+  const list = $('recent-list');
+  $('recent-clear').classList.toggle('hidden', !recentSearches.length);
+
+  if (!recentSearches.length) {
+    list.innerHTML = '<span class="recent-empty">Your recent searches will appear here.</span>';
+    return;
+  }
+  list.innerHTML = recentSearches.map((s, i) => {
+    const mode = s.mode === 'dna' ? 'dna' : 'protein';
+    const label = s.query === 'custom_sequence' ? 'Unnamed sequence' : s.query;
+    const when = (s.time || '').split(' ')[1] || s.time || '';
+    return `<button class="recent-item" onclick="rerunRecent(${i})" title="Re-run in ${MODES[mode].name}, ${esc(s.results)} results, ${esc(s.time)}">
+      <b>${esc(label)}</b>
+      <span class="m">${MODES[mode].name}</span>
+      <span class="dots">${(s.metrics || []).map(m => `<i style="--c:${METRIC_HEX[m] || '#999'}"></i>`).join('')}</span>
+      <span class="m num">${esc(when)}</span>
+    </button>`;
+  }).join('');
 }
 
 // Re-run a recent search in the tab it came from by fetching the query again
 async function rerunRecent(i) {
-    const s = recentSearches[i];
-    if (!s) return;
-    const mode = s.mode === 'dna' ? 'dna' : 'protein';
-    switchMode(mode);
+  const s = recentSearches[i];
+  if (!s) return;
+  const mode = s.mode === 'dna' ? 'dna' : 'protein';
+  switchMode(mode);
 
-    if (s.query === 'custom_sequence') {
-        showError('This search used a pasted sequence without a name, so it cannot be re-run. Paste the sequence again.');
-        return;
-    }
+  if (s.query === 'custom_sequence') {
+    showError('This search used a pasted sequence without a name, so it can\'t be re-run. Paste the sequence again.');
+    return;
+  }
 
-    const result = await loadById(s.query, mode, { quietErrors: true });
-    if (result === true) {
-        runSearch();
-    } else {
-        showError(`${result}. Only gene-symbol and accession queries can be re-run.`);
-    }
+  const result = await loadById(s.query, mode, { quietErrors: true });
+  if (result === true) {
+    runSearch();
+  } else {
+    showError(`${result}. Only gene-symbol and accession queries can be re-run.`);
+  }
 }
 
 async function clearRecent() {
-    await fetch('/api/clear_recent', { method: 'POST' });
-    loadRecent();
+  await fetch('/api/clear_recent', { method: 'POST' });
+  loadRecent();
 }
+
+/* ---------------------------------------------------------------------------
+   Wiring
+   --------------------------------------------------------------------------- */
+function updateSlider() {
+  const r = $('top-n');
+  const pct = ((r.value - r.min) / (r.max - r.min)) * 100;
+  r.style.setProperty('--pct', pct + '%');
+  $('top-n-val').textContent = r.value;
+}
+
+(function wire() {
+  const ta = $('gene-seq'), editor = $('editor');
+  ta.addEventListener('input', onSeqInput);
+  ta.addEventListener('scroll', () => { $('editor-mirror').scrollTop = ta.scrollTop; });
+  ta.addEventListener('focus', () => editor.classList.add('focused'));
+  ta.addEventListener('blur', () => editor.classList.remove('focused'));
+  new ResizeObserver(queueMirror).observe(editor);
+
+  // Drag and drop FASTA files
+  ['dragenter', 'dragover'].forEach(ev => editor.addEventListener(ev, (e) => { e.preventDefault(); editor.classList.add('dragging'); }));
+  ['dragleave', 'drop'].forEach(ev => editor.addEventListener(ev, (e) => { e.preventDefault(); editor.classList.remove('dragging'); }));
+  editor.addEventListener('drop', (e) => { const f = e.dataTransfer?.files?.[0]; if (f) readFile(f); });
+  $('file-input').addEventListener('change', (e) => { readFile(e.target.files[0]); e.target.value = ''; });
+
+  $('color-toggle').addEventListener('change', (e) => { editor.classList.toggle('colored', e.target.checked); });
+
+  for (const m of METRIC_ORDER) $(`metric-${m}`).addEventListener('change', updateWarnings);
+  document.querySelectorAll('input[name="rank-by"]').forEach(r => r.addEventListener('change', updateWarnings));
+  $('top-n').addEventListener('input', updateSlider);
+  $('results-search').addEventListener('input', filterResults);
+
+  $('run-kbd').textContent = isMac ? '⌘ ↵' : 'Ctrl ↵';
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); if (!$('search-btn').disabled) runSearch(); }
+    if (e.key === 'Escape' && $('drawer').classList.contains('open')) closeDrawer();
+  });
+
+  let rt = 0;
+  window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (alnState && !$('alignment-card').classList.contains('hidden')) renderAlignment(); }, 150); });
+
+  $('aln-overview').addEventListener('click', (e) => {
+    if (!alnState || !alnState.parsed || alnState.view !== 'fmt') return;
+    const rect = $('aln-canvas').getBoundingClientRect();
+    const col = Math.floor(((e.clientX - rect.left) / rect.width) * alnState.parsed.a.length);
+    const blocks = [...document.querySelectorAll('#aln-view .aln-block')];
+    let target = blocks[0];
+    for (const b of blocks) { if (+b.dataset.start <= col) target = b; }
+    if (!target) return;
+    if (+target.dataset.start + alnBlockSize(alnState.parsed.a.length) <= col && !alnState.showAll) { alnState.showAll = true; renderAlignment(); return; }
+    const view = $('aln-view');
+    view.scrollTo({ top: target.offsetTop - 6, behavior: 'smooth' });
+    target.animate([{ background: 'rgba(90,75,219,.10)' }, { background: 'transparent' }], { duration: 900 });
+  });
+  buildChromatogram();
+  updateSlider();
+})();
 
 // ── Start-up ──
 (function init() {
-    const params = new URLSearchParams(window.location.search);
-    const preloadedType = checkPreloadedSeq();
+  const params = new URLSearchParams(window.location.search);
+  const preloadedType = checkPreloadedSeq();
 
-    let mode = params.get('mode');
-    if (params.get('from') === 'fetch' && preloadedType) {
-        mode = preloadedType;                       // open the tab matching the fetched sequence
-    }
-    if (!MODES[mode]) {
-        try { mode = sessionStorage.getItem('genesim_search_mode'); } catch (e) { mode = null; }
-    }
-    if (!MODES[mode]) mode = 'protein';
+  let mode = params.get('mode');
+  if (params.get('from') === 'fetch' && preloadedType) {
+    mode = preloadedType;                       // open the tab matching the fetched sequence
+  }
+  if (!MODES[mode]) {
+    try { mode = sessionStorage.getItem('genesim_search_mode'); } catch (e) { mode = null; }
+  }
+  if (!MODES[mode]) mode = 'protein';
 
-    switchMode(mode);
-    loadRecent();
+  switchMode(mode);
+  loadRecent();
 })();
 </script>
 {% endblock %}

@@ -1,229 +1,625 @@
 {% extends "base.html" %}
-{% block title %}Database — GeneSim{% endblock %}
-{% block page_title %}Gene Database{% endblock %}
-{% block page_sub %}20,000 human genes — protein & DNA sequences from NCBI, UniProt, and Ensembl{% endblock %}
+{% block title %}Gene database · GeneSim{% endblock %}
+{% block body_class %}page-database{% endblock %}
+
+{% block head %}
+<style>
+.hero { padding: 40px 0 26px; }
+.hero-inner { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; }
+.hero .page-title { font-size: 38px; }
+.hero .page-sub { font-size: 15.5px; max-width: 58ch; }
+
+.hero-stats { display: grid; grid-template-columns: repeat(4, auto); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--shadow-1); flex-shrink: 0; }
+.hero-stats .s { padding: 12px 20px; border-right: 1px solid var(--line); min-width: 112px; }
+.hero-stats .s:last-child { border-right: 0; }
+.hero-stats .v { font-size: 21px; font-weight: 600; color: var(--ink); letter-spacing: -.015em; font-variant-numeric: tabular-nums; }
+.hero-stats .k { font-size: 12px; color: var(--ink-3); margin-top: 1px; white-space: nowrap; }
+.skel-num { display: inline-block; width: 56px; height: 18px; border-radius: 5px; vertical-align: middle; }
+
+/* ---------- Browser layout ---------- */
+.browser { display: grid; grid-template-columns: minmax(0, 1fr) 460px; gap: 18px; align-items: start; }
+.list-panel { overflow: hidden; display: flex; flex-direction: column; }
+.list-toolbar { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.list-toolbar .input-icon { flex: 1; min-width: 220px; }
+.list-toolbar .input { height: 38px; }
+.list-toolbar .segmented button { height: 30px; font-size: 12.5px; padding: 0 12px; }
+.list-count { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.list-head, .gene-row { display: grid; grid-template-columns: 112px minmax(0, 1fr) 76px 64px 28px; gap: 14px; align-items: center; padding: 0 16px 0 20px; }
+.list-head { height: 38px; background: var(--surface-sunk); border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
+.list-head button { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 6px; margin-left: -6px; border-radius: 6px; color: inherit; font-size: 12px; font-weight: 500; }
+.list-head button:hover { background: #EAEEF4; color: var(--ink); }
+.list-head button svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+.list-head button.sorted { color: var(--ink); }
+.list-head button.sorted svg { opacity: 1; }
+.list-head button.sorted.desc svg { transform: rotate(180deg); }
+.list-head .r, .gene-row .r { text-align: right; justify-content: flex-end; }
+.list-head .r button { margin-left: 0; margin-right: -6px; }
+
+.viewport { position: relative; overflow-y: auto; height: calc(100vh - 290px); min-height: 420px; max-height: 760px; outline: none; }
+.spacer { position: relative; }
+.gene-row {
+  position: absolute; left: 0; right: 0; height: 48px; border-bottom: 1px solid var(--line);
+  cursor: pointer; transition: background .1s; font-size: 13.5px;
+}
+.gene-row:hover { background: #F7F9FC; }
+.gene-row.active { background: var(--accent-wash); box-shadow: inset 3px 0 0 var(--brand); }
+.gene-row.kb { box-shadow: inset 0 0 0 2px var(--accent-line); }
+.gene-row .sym { font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gene-row .desc { color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+.gene-row .cnt { font-variant-numeric: tabular-nums; font-weight: 500; color: var(--ink-2); display: inline-flex; align-items: center; gap: 6px; }
+.gene-row .cnt i { width: 6px; height: 6px; border-radius: 2px; }
+.gene-row .cnt.zero { color: var(--ink-4); font-weight: 400; }
+.gene-row .chev { color: var(--ink-4); }
+.gene-row .chev svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.gene-row mark { background: #FFF1B8; color: inherit; border-radius: 2px; padding: 0 1px; }
+.list-empty { padding: 48px 24px; text-align: center; color: var(--ink-3); font-size: 13.5px; }
+.list-empty b { display: block; color: var(--ink); font-size: 15px; margin-bottom: 4px; }
+.list-loading { padding: 8px 20px; }
+.list-loading .skeleton { height: 14px; margin: 17px 0; }
+.list-foot { padding: 10px 20px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); background: var(--surface-sunk); display: flex; justify-content: space-between; gap: 12px; }
+.kbd { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border-radius: 4px; font-family: var(--font-mono); font-size: 10.5px; background: var(--surface); color: var(--ink-3); border: 1px solid var(--line); }
+
+/* ---------- Dossier ---------- */
+.dossier { position: sticky; top: calc(var(--topbar-h) + 18px); max-height: calc(100vh - var(--topbar-h) - 36px); display: flex; flex-direction: column; overflow: hidden; }
+.dossier-empty { padding: 40px 32px; display: grid; gap: 10px; }
+.dossier-empty .t { font-size: 16px; font-weight: 600; color: var(--ink); }
+.dossier-empty p { font-size: 13.5px; color: var(--ink-3); line-height: 1.55; }
+.dossier-empty .ex { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.chip-btn { height: 30px; padding: 0 11px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--surface); font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--ink-2); box-shadow: var(--shadow-1); transition: border-color .15s, background .15s; }
+.chip-btn:hover { border-color: var(--accent-line); background: var(--accent-wash); color: var(--ink); }
+.dossier-head { padding: 22px 24px 18px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+.dossier-kicker { font-size: 12.5px; color: var(--ink-3); }
+.dossier-sym { font-family: var(--font-serif); font-size: 34px; font-weight: 600; letter-spacing: -.015em; line-height: 1.1; color: var(--ink); margin-top: 4px; word-break: break-all; }
+.dossier-org { font-size: 13px; color: var(--ink-3); font-style: italic; margin-top: 4px; }
+.dossier-body { overflow-y: auto; padding: 20px 24px 24px; display: grid; gap: 22px; }
+.dossier-desc { font-size: 14px; color: var(--ink-2); line-height: 1.6; }
+.mini-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.mini-facts > div { padding: 10px 12px; border-right: 1px solid var(--line); }
+.mini-facts > div:last-child { border-right: 0; }
+.mini-facts .k { font-size: 11.5px; color: var(--ink-3); }
+.mini-facts .v { font-size: 16px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.iso-group h4 { font-size: 13px; font-weight: 600; color: var(--ink-2); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: baseline; }
+.iso-group h4 span { font-weight: 500; color: var(--ink-3); font-size: 12px; }
+.iso-list { border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.iso-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--line); }
+.iso-row:last-child { border-bottom: 0; }
+.iso-row:hover { background: #F9FAFC; }
+.iso-row .iid { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iso-row .imeta { font-size: 12px; color: var(--ink-3); margin-top: 2px; display: flex; gap: 8px; align-items: center; }
+.iso-row .imeta .src { display: inline-flex; align-items: center; gap: 5px; }
+.iso-row .imeta .src i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-4); }
+.iso-row .iact { display: flex; gap: 2px; }
+.iso-none { font-size: 12.5px; color: var(--ink-3); padding: 12px 14px; }
+.dossier-foot { padding: 14px 24px; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: flex-end; background: var(--surface-sunk); }
+
+/* ---------- Sequence viewer dialog ---------- */
+.seq-modal { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 24px; background: rgba(13,22,48,.28); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); opacity: 0; visibility: hidden; transition: opacity .2s var(--ease), visibility 0s linear .2s; }
+.seq-modal.open { opacity: 1; visibility: visible; transition: opacity .2s var(--ease); }
+.seq-dialog { width: min(880px, 100%); max-height: min(82vh, 860px); display: flex; flex-direction: column; background: var(--surface); border-radius: 18px; border: 1px solid var(--line); box-shadow: var(--shadow-3); overflow: hidden; transform: translateY(8px) scale(.99); transition: transform .25s var(--ease); }
+.seq-modal.open .seq-dialog { transform: none; }
+.seq-dialog-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; padding: 18px 20px 16px 24px; border-bottom: 1px solid var(--line); align-items: start; }
+.seq-dialog-title { font-family: var(--font-mono); font-size: 15px; font-weight: 500; color: var(--ink); word-break: break-all; }
+.seq-dialog-sub { font-size: 12.5px; color: var(--ink-3); margin-top: 3px; }
+.seq-dialog-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.seq-dialog-body { overflow: auto; padding: 18px 24px; font-family: var(--font-mono); font-size: 13px; line-height: 1.8; color: var(--ink); }
+.seq-fmt { display: grid; grid-template-columns: auto 1fr; gap: 0 18px; white-space: pre; letter-spacing: .05em; line-height: 24px; }
+.seq-fmt > div { line-height: 24px; }
+.seq-fmt .pos { color: var(--ink-4); text-align: right; font-size: 12px; user-select: none; font-variant-numeric: tabular-nums; }
+.seq-fmt .blk { margin-right: .9em; }
+.seq-fasta-h { color: var(--accent); margin-bottom: 6px; white-space: pre-wrap; word-break: break-all; }
+.colored .r-hyd { color: #2F5FC4; } .colored .r-pos { color: #C2352E; } .colored .r-neg { color: #A3329A; }
+.colored .r-pol { color: #11805A; } .colored .r-cys { color: #C4600E; } .colored .r-gly { color: #A87406; }
+.colored .r-pro { color: #7B6C0C; } .colored .r-aro { color: #0A8590; }
+.colored .n-a { color: #0A8A7C; } .colored .n-c { color: #4F41CF; } .colored .n-g { color: #B07208; } .colored .n-t { color: #D2472A; } .colored .n-n { color: var(--ink-4); }
+.seq-dialog-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 24px; border-top: 1px solid var(--line); background: var(--surface-sunk); font-size: 12px; color: var(--ink-3); }
+.color-toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+
+@media (max-width: 1180px) {
+  .browser { grid-template-columns: minmax(0, 1fr) 400px; }
+  .hero-inner { flex-direction: column; align-items: flex-start; }
+}
+@media (max-width: 960px) {
+  .browser { grid-template-columns: 1fr; }
+  .dossier { position: static; max-height: none; }
+  .viewport { height: 60vh; }
+}
+@media (max-width: 640px) {
+  .hero .page-title { font-size: 30px; }
+  .hero-stats { grid-template-columns: repeat(2, auto); width: 100%; }
+  .hero-stats .s:nth-child(2) { border-right: 0; }
+  .hero-stats .s:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .list-head, .gene-row { grid-template-columns: 92px minmax(0, 1fr) 52px 44px; }
+  .list-head > :last-child, .gene-row .chev { display: none; }
+}
+</style>
+{% endblock %}
+
+{% block page_header %}
+<section class="hero">
+  <div class="wrap hero-inner">
+    <div>
+      <h1 class="page-title">Gene database</h1>
+      <p class="page-sub">The local vault behind every search: human genes with protein and nucleotide isoforms from NCBI, UniProt and Ensembl. Browse, inspect isoforms and send any sequence to search.</p>
+    </div>
+    <div class="hero-stats" aria-label="Database summary">
+      <div class="s"><div class="v" id="stat-genes"><span class="skeleton skel-num"></span></div><div class="k">Genes</div></div>
+      <div class="s"><div class="v" id="stat-proteins"><span class="skeleton skel-num"></span></div><div class="k">Protein isoforms</div></div>
+      <div class="s"><div class="v" id="stat-dna"><span class="skeleton skel-num"></span></div><div class="k">Nucleotide isoforms</div></div>
+      <div class="s"><div class="v">3</div><div class="k">NCBI, UniProt, Ensembl</div></div>
+    </div>
+  </div>
+</section>
+{% endblock %}
 
 {% block content %}
+<div class="browser">
 
-<div class="stat-row">
-    <div class="stat-chip"><div class="stat-val" id="stat-genes">—</div><div class="stat-label">Genes</div></div>
-    <div class="stat-chip"><div class="stat-val" id="stat-proteins">—</div><div class="stat-label">Protein Isoforms</div></div>
-    <div class="stat-chip"><div class="stat-val" id="stat-dna">—</div><div class="stat-label">DNA Isoforms</div></div>
-    <div class="stat-chip"><div class="stat-val">3 Sources</div><div class="stat-label">NCBI · UniProt · Ensembl</div></div>
-</div>
-
-<div class="card" style="padding:14px 20px;">
-    <input type="text" id="db-search" class="form-input"
-           placeholder="🔍 Filter by gene symbol or description..."
-           oninput="filterGenes(this.value)">
-</div>
-
-<div class="card">
-    <div class="card-title">All Genes</div>
-    <div style="overflow-x:auto;">
-        <table class="data-table" id="gene-table">
-            <thead>
-                <tr>
-                    <th>Symbol</th>
-                    <th>Organism</th>
-                    <th>Description</th>
-                    <th style="text-align:center">Protein</th>
-                    <th style="text-align:center">DNA</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody id="gene-tbody">
-                <tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-muted)">Loading...</td></tr>
-            </tbody>
-        </table>
+  <!-- ======================= Gene list ======================= -->
+  <section class="panel list-panel" aria-label="All genes">
+    <div class="list-toolbar">
+      <div class="input-icon">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+        <input type="text" id="db-search" class="input" placeholder="Filter by gene symbol or description" autocomplete="off" spellcheck="false" aria-label="Filter genes">
+      </div>
+      <div class="segmented" role="group" aria-label="Show genes with">
+        <button aria-pressed="true" data-has="all" onclick="setHas('all')">All</button>
+        <button aria-pressed="false" data-has="protein" onclick="setHas('protein')">With protein</button>
+        <button aria-pressed="false" data-has="dna" onclick="setHas('dna')">With nucleotide</button>
+      </div>
     </div>
-</div>
-
-<!-- Isoform detail panel -->
-<div class="card hidden" id="isoform-panel">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
-        <div class="card-title" id="isoform-title" style="margin-bottom:0">Isoforms</div>
-        <button class="btn btn-ghost btn-sm" onclick="closePanel()">✕ Close</button>
+    <div class="list-head" role="row">
+      <span><button id="sort-symbol" class="sorted" onclick="setSort('symbol')">Symbol<svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></button></span>
+      <span>Description</span>
+      <span class="r"><button id="sort-protein" onclick="setSort('protein')" title="Protein isoforms">Protein<svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></button></span>
+      <span class="r"><button id="sort-dna" onclick="setSort('dna')" title="Nucleotide isoforms">DNA<svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></button></span>
+      <span></span>
     </div>
-    <div id="isoform-description" class="text-muted text-sm" style="margin-bottom:16px; line-height:1.6; max-width:700px;"></div>
-    <div id="isoform-content"></div>
-</div>
+    <div class="viewport" id="viewport" tabindex="0" aria-label="Gene list. Use the arrow keys to move and Enter to open.">
+      <div class="list-loading" id="list-loading">
+        <div class="skeleton" style="width:80%"></div><div class="skeleton" style="width:65%"></div><div class="skeleton" style="width:72%"></div>
+        <div class="skeleton" style="width:58%"></div><div class="skeleton" style="width:76%"></div><div class="skeleton" style="width:61%"></div>
+      </div>
+      <div class="spacer" id="spacer"></div>
+      <div class="list-empty hidden" id="list-empty"><b>No genes match your filter</b>Try a shorter symbol or a word from the description.</div>
+    </div>
+    <div class="list-foot">
+      <span class="list-count" id="list-count">Loading genes</span>
+      <span><span class="kbd">↑</span> <span class="kbd">↓</span> to move, <span class="kbd">Enter</span> to open</span>
+    </div>
+  </section>
 
-<!-- Sequence viewer modal -->
-<div id="seq-modal" style="
-    display:none; position:fixed; inset:0; z-index:200;
-    background:rgba(0,0,0,0.4); backdrop-filter:blur(4px);
-    align-items:center; justify-content:center;">
-    <div style="
-        background:var(--bg-white); border-radius:16px;
-        width:min(720px, 90vw); max-height:80vh;
-        display:flex; flex-direction:column;
-        box-shadow:var(--shadow-lg); overflow:hidden;">
-        <div style="padding:20px 24px; border-bottom:1px solid var(--border-light); display:flex; align-items:center; justify-content:space-between;">
-            <div>
-                <div style="font-weight:600; font-size:15px" id="seq-modal-title">Sequence</div>
-                <div class="text-muted text-sm" id="seq-modal-sub"></div>
-            </div>
-            <div style="display:flex; gap:8px; align-items:center;">
-                <button class="btn btn-ghost btn-sm" onclick="copySequence()">📋 Copy</button>
-                <button class="btn btn-ghost btn-sm" onclick="closeSeqModal()">✕</button>
-            </div>
+  <!-- ======================= Gene dossier ======================= -->
+  <aside class="panel dossier" id="isoform-panel" aria-label="Gene details" aria-live="polite">
+    <div class="dossier-empty" id="dossier-empty">
+      <div class="t">Select a gene</div>
+      <p>Its description, every stored isoform and its sequences appear here. You can copy or download any sequence, or send it to similarity search.</p>
+      <div class="ex">
+        <button class="chip-btn" onclick="loadIsoforms('TP53')">TP53</button>
+        <button class="chip-btn" onclick="loadIsoforms('BRCA1')">BRCA1</button>
+        <button class="chip-btn" onclick="loadIsoforms('EGFR')">EGFR</button>
+        <button class="chip-btn" onclick="loadIsoforms('MYC')">MYC</button>
+      </div>
+    </div>
+    <div class="hidden" id="dossier" style="display:contents">
+      <div class="dossier-head">
+        <div>
+          <div class="dossier-kicker" id="dossier-kicker">Gene</div>
+          <div class="dossier-sym" id="isoform-title"></div>
+          <div class="dossier-org" id="dossier-org"></div>
         </div>
-        <div style="padding:20px 24px; overflow-y:auto; flex:1;">
-            <div id="seq-modal-body" class="code-block" style="font-size:12px; line-height:1.8; word-break:break-all; white-space:pre-wrap;"></div>
-        </div>
+        <button class="btn btn-ghost btn-icon" onclick="closePanel()" aria-label="Close gene details">
+          <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="dossier-body">
+        <p class="dossier-desc" id="isoform-description"></p>
+        <div id="isoform-content"></div>
+      </div>
+      <div class="dossier-foot">
+        <button class="btn btn-secondary btn-sm" onclick="copyGeneLink()">
+          <svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>Copy link
+        </button>
+        <button class="btn btn-primary btn-sm" id="dossier-search" onclick="searchFirstIsoform()">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>Search with this gene
+        </button>
+      </div>
     </div>
+  </aside>
 </div>
 
+<!-- ======================= Sequence viewer ======================= -->
+<div id="seq-modal" class="seq-modal" role="dialog" aria-modal="true" aria-labelledby="seq-modal-title" aria-hidden="true">
+  <div class="seq-dialog">
+    <div class="seq-dialog-head">
+      <div>
+        <div class="seq-dialog-title" id="seq-modal-title">Sequence</div>
+        <div class="seq-dialog-sub" id="seq-modal-sub"></div>
+      </div>
+      <div class="seq-dialog-actions">
+        <button class="btn btn-secondary btn-sm" id="seq-copy-btn" onclick="copySequence()">
+          <svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Copy FASTA
+        </button>
+        <button class="btn btn-secondary btn-sm" onclick="downloadSequence()">
+          <svg viewBox="0 0 24 24"><path d="M12 4v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M5 19.5h14"/></svg>Download
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="searchCurrentSequence()">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>Search with this
+        </button>
+        <button class="btn btn-ghost btn-icon btn-sm" onclick="closeSeqModal()" aria-label="Close sequence viewer">
+          <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="seq-dialog-body colored" id="seq-modal-body"></div>
+    <div class="seq-dialog-foot">
+      <span>60 residues per line, in blocks of 10</span>
+      <label class="color-toggle"><span class="switch"><input type="checkbox" id="seq-color" checked><span></span></span>Colour residues</label>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
 <script>
 let allGenes = [];
-let currentSeq = '';
+let viewGenes = [];
+let currentSeq = '';          // FASTA text of the open sequence (as before)
+let currentSeqInfo = null;    // { symbol, isoformId, seqType, sequence }
+let currentGene = null;       // { symbol, data }
+let filterText = '';
+let hasFilter = 'all';
+let sortKey = 'symbol', sortDir = 'asc';
+let kbIndex = -1;
+const ROW_H = 48;
+const $ = (id) => document.getElementById(id);
+const esc = GS.escape;
 
+/* ---------------------------------------------------------------------------
+   Loading
+   --------------------------------------------------------------------------- */
 async function loadGenes() {
+  try {
     const resp = await fetch('/api/genes');
-    allGenes   = await resp.json();
+    allGenes = await resp.json();
+  } catch (e) {
+    $('list-loading').innerHTML = `<div class="notice notice-err" style="margin:16px 0"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg><div>Couldn't load the gene list: ${esc(e.message)}. Check that the GeneSim server is running, then reload.</div></div>`;
+    $('list-count').textContent = 'Not loaded';
+    return;
+  }
+  allGenes.forEach(g => { g._s = g.symbol.toLowerCase(); g._d = (g.description || '').toLowerCase(); });
+  $('stat-genes').textContent    = allGenes.length.toLocaleString('en-US');
+  $('stat-proteins').textContent = allGenes.reduce((a, g) => a + g.protein_count, 0).toLocaleString('en-US');
+  $('stat-dna').textContent      = allGenes.reduce((a, g) => a + g.dna_count, 0).toLocaleString('en-US');
+  $('list-loading').remove();
+  applyFilter();
 
-    document.getElementById('stat-genes').textContent    = allGenes.length;
-    document.getElementById('stat-proteins').textContent = allGenes.reduce((a,g) => a + g.protein_count, 0);
-    document.getElementById('stat-dna').textContent      = allGenes.reduce((a,g) => a + g.dna_count, 0);
-
-    renderGenes(allGenes);
+  const hash = decodeURIComponent((location.hash || '').slice(1)).trim();
+  if (hash) loadIsoforms(hash.toUpperCase());
 }
 
-function renderGenes(genes) {
-    const tbody = document.getElementById('gene-tbody');
-    if (!genes.length) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-muted)">No genes match your filter.</td></tr>`;
-        return;
+/* ---------------------------------------------------------------------------
+   Filtering, sorting and the virtual list
+   --------------------------------------------------------------------------- */
+function filterGenes(q) { filterText = q; applyFilter(); }
+
+function applyFilter() {
+  const f = filterText.toLowerCase().trim();
+  let rows = allGenes;
+  if (hasFilter === 'protein') rows = rows.filter(g => g.protein_count > 0);
+  if (hasFilter === 'dna') rows = rows.filter(g => g.dna_count > 0);
+  if (f) rows = rows.filter(g => g._s.includes(f) || g._d.includes(f));
+  rows = rows.slice();
+  const dir = sortDir === 'asc' ? 1 : -1;
+  rows.sort((a, b) => {
+    if (f && sortKey === 'symbol') {
+      // Closest symbol matches first while filtering
+      const ra = a._s === f ? 0 : a._s.startsWith(f) ? 1 : a._s.includes(f) ? 2 : 3;
+      const rb = b._s === f ? 0 : b._s.startsWith(f) ? 1 : b._s.includes(f) ? 2 : 3;
+      if (ra !== rb) return ra - rb;
     }
-    tbody.innerHTML = genes.map(g => `
-        <tr>
-            <td><span class="gene-badge">${g.symbol}</span></td>
-            <td class="text-muted text-sm">${g.organism}</td>
-            <td class="text-sm" style="max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-mid)" title="${g.description||''}">${g.description||'—'}</td>
-            <td style="text-align:center"><span style="color:var(--accent); font-family:var(--mono); font-weight:600; font-size:13px">${g.protein_count}</span></td>
-            <td style="text-align:center"><span style="color:var(--purple); font-family:var(--mono); font-weight:600; font-size:13px">${g.dna_count}</span></td>
-            <td><button class="btn btn-ghost btn-sm" onclick="loadIsoforms('${g.symbol}')">View →</button></td>
-        </tr>
-    `).join('');
+    if (sortKey === 'protein') return dir * (a.protein_count - b.protein_count) || a.symbol.localeCompare(b.symbol);
+    if (sortKey === 'dna') return dir * (a.dna_count - b.dna_count) || a.symbol.localeCompare(b.symbol);
+    return dir * a.symbol.localeCompare(b.symbol);
+  });
+  viewGenes = rows;
+  kbIndex = -1;
+  $('spacer').style.height = (rows.length * ROW_H) + 'px';
+  $('list-empty').classList.toggle('hidden', rows.length > 0);
+  $('list-count').textContent = rows.length === allGenes.length
+    ? `${allGenes.length.toLocaleString('en-US')} genes`
+    : `${rows.length.toLocaleString('en-US')} of ${allGenes.length.toLocaleString('en-US')} genes`;
+  $('viewport').scrollTop = 0;
+  renderGenes();
 }
 
-function filterGenes(q) {
-    const f = q.toLowerCase();
-    renderGenes(allGenes.filter(g =>
-        g.symbol.toLowerCase().includes(f) ||
-        (g.description||'').toLowerCase().includes(f)
-    ));
+function highlight(text, f) {
+  const t = String(text || '');
+  if (!f) return esc(t);
+  const i = t.toLowerCase().indexOf(f);
+  if (i < 0) return esc(t);
+  return esc(t.slice(0, i)) + '<mark>' + esc(t.slice(i, i + f.length)) + '</mark>' + esc(t.slice(i + f.length));
 }
 
+function renderGenes() {
+  const vp = $('viewport');
+  const spacer = $('spacer');
+  const first = Math.max(0, Math.floor(vp.scrollTop / ROW_H) - 8);
+  const last = Math.min(viewGenes.length, Math.ceil((vp.scrollTop + vp.clientHeight) / ROW_H) + 8);
+  const f = filterText.toLowerCase().trim();
+  const active = currentGene ? currentGene.symbol : null;
+  let html = '';
+  for (let i = first; i < last; i++) {
+    const g = viewGenes[i];
+    html += `<div class="gene-row ${g.symbol === active ? 'active' : ''} ${i === kbIndex ? 'kb' : ''}" style="top:${i * ROW_H}px" data-i="${i}" role="button"
+              title="${esc(g.description || g.symbol)}" onclick="loadIsoforms('${esc(g.symbol)}')">
+      <span class="sym">${highlight(g.symbol, f)}</span>
+      <span class="desc">${g.description ? highlight(g.description, f) : '<span style="color:var(--ink-4)">No description</span>'}</span>
+      <span class="r"><span class="cnt ${g.protein_count ? '' : 'zero'}">${g.protein_count}</span></span>
+      <span class="r"><span class="cnt ${g.dna_count ? '' : 'zero'}">${g.dna_count}</span></span>
+      <span class="chev"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span>
+    </div>`;
+  }
+  spacer.innerHTML = html;
+}
+
+function setHas(v) {
+  hasFilter = v;
+  document.querySelectorAll('.list-toolbar .segmented button').forEach(b => b.setAttribute('aria-pressed', b.dataset.has === v ? 'true' : 'false'));
+  applyFilter();
+}
+
+function setSort(key) {
+  if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  else { sortKey = key; sortDir = key === 'symbol' ? 'asc' : 'desc'; }
+  for (const k of ['symbol', 'protein', 'dna']) {
+    const b = $(`sort-${k}`);
+    b.classList.toggle('sorted', k === sortKey);
+    b.classList.toggle('desc', k === sortKey && sortDir === 'desc');
+  }
+  applyFilter();
+}
+
+/* ---------------------------------------------------------------------------
+   Gene dossier (same /api/gene/<symbol> call as before)
+   --------------------------------------------------------------------------- */
 function closePanel() {
-    document.getElementById('isoform-panel').classList.add('hidden');
+  currentGene = null;
+  $('dossier').classList.add('hidden');
+  $('dossier-empty').classList.remove('hidden');
+  history.replaceState(null, '', location.pathname + location.search);
+  renderGenes();
 }
 
 async function loadIsoforms(symbol) {
-    const panel = document.getElementById('isoform-panel');
-    document.getElementById('isoform-title').textContent = symbol + ' — Isoforms';
-    document.getElementById('isoform-description').textContent = '';
-    document.getElementById('isoform-content').innerHTML = `<div style="text-align:center;padding:24px;color:var(--text-muted)">Loading...</div>`;
-    panel.classList.remove('hidden');
-    panel.scrollIntoView({ behavior:'smooth', block:'start' });
+  currentGene = { symbol, data: null };
+  $('dossier-empty').classList.add('hidden');
+  $('dossier').classList.remove('hidden');
+  $('isoform-title').textContent = symbol;
+  $('dossier-kicker').textContent = 'Gene';
+  $('dossier-org').textContent = '';
+  $('isoform-description').textContent = '';
+  $('isoform-content').innerHTML = `<div class="skeleton" style="width:92%"></div><div class="skeleton" style="width:76%; margin-top:10px"></div><div class="skeleton" style="width:84%; margin-top:10px"></div>`;
+  history.replaceState(null, '', '#' + encodeURIComponent(symbol));
+  renderGenes();
+  if (window.innerWidth <= 960) $('isoform-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-    const resp = await fetch('/api/gene/' + symbol);
-    const data = await resp.json();
+  let data;
+  try {
+    const resp = await fetch('/api/gene/' + encodeURIComponent(symbol));
+    data = await resp.json();
+  } catch (e) {
+    data = { error: e.message };
+  }
+  if (!currentGene || currentGene.symbol !== symbol) return;
 
-    if (data.error) {
-        document.getElementById('isoform-content').innerHTML = `<div class="alert alert-error">${data.error}</div>`;
-        return;
-    }
+  if (data.error) {
+    $('isoform-content').innerHTML = `<div class="notice notice-err"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg><div>${esc(data.error === 'Gene not found' ? `${symbol} isn't in the local database.` : data.error)}</div></div>`;
+    return;
+  }
+  currentGene.data = data;
+  $('isoform-title').textContent = data.symbol;
+  $('dossier-org').textContent = data.organism || '';
+  const idx = viewGenes.findIndex(g => g.symbol === data.symbol);
+  $('dossier-kicker').textContent = idx >= 0 ? `Gene ${(idx + 1).toLocaleString('en-US')} of ${viewGenes.length.toLocaleString('en-US')}` : 'Gene';
+  if (data.description) $('isoform-description').textContent = data.description;
 
-    if (data.description) {
-        document.getElementById('isoform-description').textContent = data.description;
-    }
+  const protein = data.isoforms.filter(i => i.type === 'protein');
+  const dna     = data.isoforms.filter(i => i.type === 'dna');
+  const sources = new Set(data.isoforms.map(i => i.source));
+  const longest = (list) => list.reduce((m, i) => Math.max(m, i.length || 0), 0);
 
-    const protein = data.isoforms.filter(i => i.type === 'protein');
-    const dna     = data.isoforms.filter(i => i.type === 'dna');
-
-    document.getElementById('isoform-content').innerHTML = `
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
-            <div>
-                <div class="card-title">Protein sequences (${protein.length})</div>
-                ${protein.map(iso => `
-                    <div style="background:var(--bg); border:1px solid var(--border-light); border-radius:10px; padding:12px 14px; margin-bottom:8px;">
-                        <div class="text-mono text-sm" style="color:var(--accent); font-weight:600">${iso.isoform_id}</div>
-                        <div style="display:flex; gap:16px; margin-top:6px; flex-wrap:wrap; align-items:center;">
-                            <span class="text-muted text-sm">Source: <strong style="color:var(--text-mid)">${iso.source}</strong></span>
-                            <span class="text-muted text-sm">Length: <strong style="color:var(--green)">${iso.length?.toLocaleString()||'—'} AA</strong></span>
-                            <button class="btn btn-ghost btn-sm" style="margin-left:auto"
-                                onclick="viewSequence('${symbol}','${iso.isoform_id}','protein','${iso.isoform_id} — ${iso.source} protein','${iso.length?.toLocaleString()||''} AA')">
-                                View sequence
-                            </button>
-                        </div>
-                    </div>
-                `).join('')}
+  const group = (list, type, title, unit) => `
+    <div class="iso-group">
+      <h4>${title}<span>${list.length} stored${list.length ? `, longest ${longest(list).toLocaleString('en-US')} ${unit}` : ''}</span></h4>
+      <div class="iso-list">
+        ${list.length ? list.map(iso => {
+          const label = `${iso.isoform_id}, ${iso.source} ${type === 'protein' ? 'protein' : 'nucleotide'}`;
+          const len = iso.length ? `${iso.length.toLocaleString('en-US')} ${unit}` : 'length unknown';
+          return `<div class="iso-row">
+            <div style="min-width:0">
+              <div class="iid" title="${esc(iso.isoform_id)}">${esc(iso.isoform_id)}</div>
+              <div class="imeta"><span class="src"><i></i>${esc(iso.source)}</span><span>${len}</span></div>
             </div>
-            <div>
-                <div class="card-title">DNA sequences (${dna.length})</div>
-                ${dna.map(iso => `
-                    <div style="background:var(--bg); border:1px solid var(--border-light); border-radius:10px; padding:12px 14px; margin-bottom:8px;">
-                        <div class="text-mono text-sm" style="color:var(--purple); font-weight:600">${iso.isoform_id}</div>
-                        <div style="display:flex; gap:16px; margin-top:6px; flex-wrap:wrap; align-items:center;">
-                            <span class="text-muted text-sm">Source: <strong style="color:var(--text-mid)">${iso.source}</strong></span>
-                            <span class="text-muted text-sm">Length: <strong style="color:var(--purple)">${iso.length?.toLocaleString()||'—'} bp</strong></span>
-                            <button class="btn btn-ghost btn-sm" style="margin-left:auto"
-                                onclick="viewSequence('${symbol}','${iso.isoform_id}','dna','${iso.isoform_id} — ${iso.source} DNA','${iso.length?.toLocaleString()||''} bp')">
-                                View sequence
-                            </button>
-                        </div>
-                    </div>
-                `).join('')}
+            <div class="iact">
+              <button class="btn btn-ghost btn-sm" onclick="quickCopy('${esc(data.symbol)}','${esc(iso.isoform_id)}','${type}')" title="Copy as FASTA">Copy</button>
+              <button class="btn btn-secondary btn-sm" onclick="viewSequence('${esc(data.symbol)}','${esc(iso.isoform_id)}','${type}','${esc(label)}','${esc(len)}')">View</button>
             </div>
-        </div>
-    `;
+          </div>`;
+        }).join('') : `<div class="iso-none">No ${type === 'protein' ? 'protein' : 'nucleotide'} isoforms are stored for this gene.</div>`}
+      </div>
+    </div>`;
+
+  $('isoform-content').innerHTML = `
+    <div class="mini-facts" style="margin-bottom:22px">
+      <div><div class="k">Protein</div><div class="v">${protein.length}</div></div>
+      <div><div class="k">Nucleotide</div><div class="v">${dna.length}</div></div>
+      <div><div class="k">Sources</div><div class="v">${sources.size}</div></div>
+    </div>
+    <div style="display:grid; gap:20px">
+      ${group(protein, 'protein', 'Protein sequences', 'aa')}
+      ${group(dna, 'dna', 'Nucleotide sequences', 'bp')}
+    </div>`;
+  $('dossier-search').classList.toggle('hidden', !data.isoforms.length);
+}
+
+/* ---------------------------------------------------------------------------
+   Sequences (same /api/gene/<symbol>/sequence call as before)
+   --------------------------------------------------------------------------- */
+const AA_CLASS = {};
+'AILMFWV'.split('').forEach(c => AA_CLASS[c] = 'r-hyd');
+'KR'.split('').forEach(c => AA_CLASS[c] = 'r-pos');
+'DE'.split('').forEach(c => AA_CLASS[c] = 'r-neg');
+'NQST'.split('').forEach(c => AA_CLASS[c] = 'r-pol');
+AA_CLASS.C = 'r-cys'; AA_CLASS.G = 'r-gly'; AA_CLASS.P = 'r-pro'; AA_CLASS.H = 'r-aro'; AA_CLASS.Y = 'r-aro';
+const NT_CLASS = { A: 'n-a', C: 'n-c', G: 'n-g', T: 'n-t', N: 'n-n' };
+
+function colorRun(str, isDna) {
+  let html = '', run = '', cls = null;
+  for (const ch of str) {
+    const c = isDna ? (NT_CLASS[ch] || '') : (AA_CLASS[ch] || '');
+    if (c !== cls) { if (run) html += cls ? `<span class="${cls}">${esc(run)}</span>` : esc(run); run = ''; cls = c; }
+    run += ch;
+  }
+  if (run) html += cls ? `<span class="${cls}">${esc(run)}</span>` : esc(run);
+  return html;
+}
+
+function fastaFor(symbol, isoformId, seqType, seq) {
+  // Same header and 60-character lines as the original viewer
+  const header = `>${isoformId} | ${symbol} | ${seqType} | ${seq.length} ${seqType === 'protein' ? 'AA' : 'bp'}`;
+  const lines = [];
+  for (let i = 0; i < seq.length; i += 60) lines.push(seq.slice(i, i + 60));
+  return header + '\n' + lines.join('\n');
+}
+
+async function fetchSequence(symbol, isoformId, seqType) {
+  const url = `/api/gene/${encodeURIComponent(symbol)}/sequence?isoform_id=${encodeURIComponent(isoformId)}&type=${seqType}`;
+  const resp = await fetch(url);
+  const data = await resp.json();
+  if (data.error) throw new Error(data.error);
+  return data.sequence;
 }
 
 async function viewSequence(symbol, isoformId, seqType, title, lengthLabel) {
-    document.getElementById('seq-modal-title').textContent = title;
-    document.getElementById('seq-modal-sub').textContent   = lengthLabel;
-    document.getElementById('seq-modal-body').textContent  = 'Loading...';
-    document.getElementById('seq-modal').style.display     = 'flex';
+  $('seq-modal-title').textContent = isoformId;
+  $('seq-modal-sub').textContent = `${symbol}, ${title.split(', ').slice(1).join(', ')}, ${lengthLabel}`;
+  $('seq-modal-body').innerHTML = '<div class="skeleton" style="width:90%"></div><div class="skeleton" style="width:84%; margin-top:12px"></div><div class="skeleton" style="width:88%; margin-top:12px"></div>';
+  currentSeq = ''; currentSeqInfo = null;
+  openModal();
 
-    const url  = `/api/gene/${symbol}/sequence?isoform_id=${encodeURIComponent(isoformId)}&type=${seqType}`;
-    const resp = await fetch(url);
-    const data = await resp.json();
-
-    if (data.error) {
-        document.getElementById('seq-modal-body').textContent = 'Error: ' + data.error;
-        return;
-    }
-
-    // Format sequence in 60-char lines like FASTA
-    const seq      = data.sequence;
-    const header   = `>${isoformId} | ${symbol} | ${seqType} | ${seq.length} ${seqType === 'protein' ? 'AA' : 'bp'}`;
-    const lines    = [];
-    for (let i = 0; i < seq.length; i += 60) {
-        lines.push(seq.slice(i, i + 60));
-    }
-    currentSeq = header + '\n' + lines.join('\n');
-    document.getElementById('seq-modal-body').textContent = currentSeq;
+  let seq;
+  try { seq = await fetchSequence(symbol, isoformId, seqType); }
+  catch (e) {
+    $('seq-modal-body').innerHTML = `<div class="notice notice-err" style="font-family:var(--font-sans)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg><div>Couldn't load the sequence: ${esc(e.message)}</div></div>`;
+    return;
+  }
+  currentSeq = fastaFor(symbol, isoformId, seqType, seq);
+  currentSeqInfo = { symbol, isoformId, seqType, sequence: seq };
+  const isDna = seqType === 'dna';
+  const s = seq.toUpperCase();
+  if (s.length > 200000) {
+    $('seq-modal-body').innerHTML = `<div class="seq-fasta-h">${esc(currentSeq.split('\n')[0])}</div><div style="white-space:pre-wrap;word-break:break-all">${esc(s)}</div>`;
+    return;
+  }
+  let pos = '', lines = '';
+  for (let i = 0; i < s.length; i += 60) {
+    pos += `${i + 1}\n`;
+    let line = '';
+    for (let j = i; j < Math.min(i + 60, s.length); j += 10) line += `<span class="blk">${colorRun(s.slice(j, Math.min(j + 10, i + 60, s.length)), isDna)}</span>`;
+    lines += line + '\n';
+  }
+  $('seq-modal-body').innerHTML = `<div class="seq-fasta-h">${esc(currentSeq.split('\n')[0])}</div><div class="seq-fmt"><div class="pos">${pos}</div><div>${lines}</div></div>`;
 }
 
+function openModal() {
+  const m = $('seq-modal');
+  m.classList.add('open'); m.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => $('seq-copy-btn').focus({ preventScroll: true }), 60);
+}
 function closeSeqModal() {
-    document.getElementById('seq-modal').style.display = 'none';
-    currentSeq = '';
+  const m = $('seq-modal');
+  m.classList.remove('open'); m.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = '';
+  currentSeq = ''; currentSeqInfo = null;
 }
 
 function copySequence() {
-    if (!currentSeq) return;
-    navigator.clipboard.writeText(currentSeq).then(() => {
-        const btn = document.querySelector('#seq-modal .btn-ghost');
-        btn.textContent = '✅ Copied!';
-        setTimeout(() => btn.textContent = '📋 Copy', 1500);
-    });
+  if (!currentSeq) return;
+  GS.copy(currentSeq, 'FASTA copied to clipboard');
+}
+function downloadSequence() {
+  if (!currentSeqInfo) return;
+  GS.download(`${currentSeqInfo.isoformId.replace(/[^A-Za-z0-9._-]+/g, '_')}.fasta`, currentSeq + '\n');
+}
+async function quickCopy(symbol, isoformId, seqType) {
+  try { GS.copy(fastaFor(symbol, isoformId, seqType, await fetchSequence(symbol, isoformId, seqType)), `${isoformId} copied as FASTA`); }
+  catch (e) { GS.toast(`Couldn't copy: ${e.message}`); }
 }
 
-// Close modal on background click
-document.getElementById('seq-modal').addEventListener('click', function(e) {
-    if (e.target === this) closeSeqModal();
+// Hand a sequence to the Search page with the same sessionStorage keys Fetch uses
+function handToSearch(symbol, isoformId, seqType, seq) {
+  sessionStorage.setItem('genesim_query_seq', seq);
+  sessionStorage.setItem('genesim_query_symbol', symbol);
+  sessionStorage.setItem('genesim_query_source', 'Local database');
+  sessionStorage.setItem('genesim_query_type', seqType);
+  sessionStorage.setItem('genesim_query_isoform', isoformId);
+  sessionStorage.setItem('genesim_query_source_url', '');
+  window.location.href = '/?from=fetch';
+}
+function searchCurrentSequence() {
+  if (!currentSeqInfo) return;
+  const c = currentSeqInfo;
+  handToSearch(c.symbol, c.isoformId, c.seqType, c.sequence);
+}
+async function searchFirstIsoform() {
+  if (!currentGene || !currentGene.data) return;
+  const d = currentGene.data;
+  const iso = d.isoforms.find(i => i.type === 'protein') || d.isoforms[0];
+  if (!iso) return;
+  try { handToSearch(d.symbol, iso.isoform_id, iso.type, await fetchSequence(d.symbol, iso.isoform_id, iso.type)); }
+  catch (e) { GS.toast(`Couldn't load the sequence: ${e.message}`); }
+}
+function copyGeneLink() {
+  if (!currentGene) return;
+  GS.copy(`${location.origin}/database#${encodeURIComponent(currentGene.symbol)}`, 'Link copied');
+}
+
+/* ---------------------------------------------------------------------------
+   Wiring
+   --------------------------------------------------------------------------- */
+let filterTimer = 0;
+$('db-search').addEventListener('input', (e) => { clearTimeout(filterTimer); const v = e.target.value; filterTimer = setTimeout(() => filterGenes(v), 90); });
+$('db-search').addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); $('viewport').focus(); moveKb(1); }
+  if (e.key === 'Enter' && viewGenes.length) loadIsoforms(viewGenes[0].symbol);
+});
+$('viewport').addEventListener('scroll', () => requestAnimationFrame(renderGenes), { passive: true });
+window.addEventListener('resize', () => requestAnimationFrame(renderGenes));
+
+function moveKb(delta) {
+  if (!viewGenes.length) return;
+  kbIndex = Math.max(0, Math.min(viewGenes.length - 1, kbIndex + delta));
+  const vp = $('viewport');
+  const top = kbIndex * ROW_H;
+  if (top < vp.scrollTop) vp.scrollTop = top;
+  else if (top + ROW_H > vp.scrollTop + vp.clientHeight) vp.scrollTop = top + ROW_H - vp.clientHeight;
+  renderGenes();
+}
+$('viewport').addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); moveKb(1); }
+  if (e.key === 'ArrowUp') { e.preventDefault(); moveKb(-1); }
+  if (e.key === 'Enter' && kbIndex >= 0) loadIsoforms(viewGenes[kbIndex].symbol);
+});
+
+$('seq-color').addEventListener('change', (e) => $('seq-modal-body').classList.toggle('colored', e.target.checked));
+// Close modal on background click or Escape
+$('seq-modal').addEventListener('click', function (e) { if (e.target === this) closeSeqModal(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('seq-modal').classList.contains('open')) closeSeqModal(); });
+window.addEventListener('hashchange', () => {
+  const h = decodeURIComponent(location.hash.slice(1)).trim().toUpperCase();
+  if (h && (!currentGene || currentGene.symbol !== h)) loadIsoforms(h);
 });
 
 loadGenes();

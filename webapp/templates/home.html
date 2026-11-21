@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GeneSim · Effective and Efficient Gene Similarity Search</title>
+<meta name="description" content="GeneSim compares protein and nucleotide sequences against about 20,000 human genes using alignment, k-mer, edit distance and promoter motif similarity. A senior graduation project at the University of Sharjah.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23182260'/%3E%3Cpath d='M7 12c4.5-6 9.5 6 18 0M7 20c4.5-6 9.5 6 18 0' stroke='%23fff' stroke-width='2.4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+/* ==========================================================================
+   GeneSim landing page: Precision Light tokens (same values as base.html)
+   ========================================================================== */
+:root {
+  --canvas: #F3F5F8; --surface: #FFFFFF; --surface-sunk: #F7F9FB; --surface-hover: #F1F4F8;
+  --ink: #0D1630; --ink-2: #3B4660; --ink-3: #66718A; --ink-4: #98A1B3;
+  --line: #E3E8EF; --line-2: #D2D9E4;
+  --brand: #182260; --brand-hover: #222E7A; --accent: #3A4BD4; --accent-wash: #EEF0FD; --accent-line: #C9CFF6;
+  --ch-blosum: #5A4BDB; --ch-kmer: #0A9384; --ch-edit: #E0512F; --ch-motif: #D08A0E;
+  --ch-blosum-wash: #F0EEFD; --ch-kmer-wash: #E6F6F3; --ch-edit-wash: #FDEEEA; --ch-motif-wash: #FCF4E3;
+  --font-sans: 'Geist', 'DM Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: 'Source Serif 4', 'Source Serif Pro', 'Iowan Old Style', Georgia, serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 22px;
+  --shadow-1: 0 1px 2px rgba(13,22,48,.05);
+  --shadow-2: 0 1px 2px rgba(13,22,48,.04), 0 10px 30px -10px rgba(13,22,48,.12);
+  --shadow-3: 0 2px 6px rgba(13,22,48,.06), 0 30px 70px -20px rgba(13,22,48,.25);
+  --focus: 0 0 0 3px rgba(58,75,212,.25);
+  --wrap: 1240px; --gutter: 32px; --nav-h: 68px;
+  --ease: cubic-bezier(.2,.7,.2,1);
+}
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; padding: 0; }
+html { scroll-behavior: smooth; scroll-padding-top: calc(var(--nav-h) + 12px); -webkit-text-size-adjust: 100%; }
+body { background: var(--canvas); color: var(--ink); font-family: var(--font-sans); font-size: 16px; line-height: 1.6;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
+a { color: inherit; text-decoration: none; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+img, svg, canvas { display: block; max-width: 100%; }
+::selection { background: #D9DDFB; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+.wrap { width: 100%; max-width: var(--wrap); margin: 0 auto; padding: 0 var(--gutter); }
+.mono { font-family: var(--font-mono); }
+.sr-only { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- Buttons ---------- */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: 44px; padding: 0 20px; border-radius: 10px;
+  font-size: 15px; font-weight: 500; white-space: nowrap; border: 1px solid transparent;
+  transition: background .18s var(--ease), border-color .18s var(--ease), color .18s var(--ease), box-shadow .18s var(--ease), transform .1s; }
+.btn svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.btn:active { transform: translateY(1px); }
+.btn:focus-visible { outline: none; box-shadow: var(--focus); }
+.btn-primary { background: var(--brand); color: #fff; box-shadow: 0 1px 2px rgba(13,22,48,.2), inset 0 1px 0 rgba(255,255,255,.08); }
+.btn-primary:hover { background: var(--brand-hover); }
+.btn-primary .arrow { transition: transform .2s var(--ease); }
+.btn-primary:hover .arrow { transform: translateX(3px); }
+.btn-secondary { background: var(--surface); color: var(--ink); border-color: var(--line-2); box-shadow: var(--shadow-1); }
+.btn-secondary:hover { background: var(--surface-hover); border-color: #C3CBD8; }
+.btn-lg { height: 52px; padding: 0 26px; font-size: 16px; border-radius: 12px; }
+.btn-sm { height: 38px; padding: 0 16px; font-size: 14px; }
+
+/* ---------- Navigation ---------- */
+.nav { position: fixed; inset: 0 0 auto 0; z-index: 50; height: var(--nav-h);
+  transition: background .25s var(--ease), border-color .25s var(--ease), backdrop-filter .25s; border-bottom: 1px solid transparent; }
+.nav.scrolled { background: rgba(255,255,255,.84); backdrop-filter: saturate(160%) blur(14px); -webkit-backdrop-filter: saturate(160%) blur(14px); border-bottom-color: var(--line); }
+.nav .wrap { height: 100%; display: flex; align-items: center; gap: 40px; }
+.brand { display: flex; align-items: center; gap: 11px; flex-shrink: 0; }
+.brand svg { width: 32px; height: 32px; }
+.brand-name { font-family: var(--font-serif); font-size: 22px; font-weight: 600; letter-spacing: -.01em; line-height: 1; }
+.nav-links { display: flex; gap: 4px; }
+.nav-links a { height: 38px; display: inline-flex; align-items: center; padding: 0 14px; border-radius: 8px; font-size: 14.5px; font-weight: 500; color: var(--ink-2); transition: color .15s, background .15s; }
+.nav-links a:hover { color: var(--ink); background: rgba(13,22,48,.04); }
+.nav-links a.active { color: var(--ink); }
+.nav-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.menu-btn { display: none; width: 40px; height: 40px; border-radius: 10px; align-items: center; justify-content: center; border: 1px solid var(--line-2); background: var(--surface); }
+.menu-btn svg { width: 18px; height: 18px; stroke: var(--ink); fill: none; stroke-width: 2; stroke-linecap: round; }
+.mobile-menu { display: none; }
+
+/* ---------- Hero ---------- */
+.hero { position: relative; padding: calc(var(--nav-h) + 56px) 0 0; overflow: hidden; }
+.hero::before { /* faint measurement grid, like plotting paper */
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image: linear-gradient(rgba(24,34,96,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(24,34,96,.045) 1px, transparent 1px);
+  background-size: 48px 48px; background-position: -1px -1px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 70% 40%, #000 20%, transparent 75%);
+          mask-image: radial-gradient(ellipse 70% 60% at 70% 40%, #000 20%, transparent 75%);
+}
+.hero-grid { position: relative; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 48px; align-items: center; min-height: 600px; }
+.hero-badge { display: inline-flex; align-items: center; gap: 10px; height: 34px; padding: 0 14px 0 6px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-1); font-size: 13.5px; color: var(--ink-2); }
+.hero-badge b { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: var(--accent-wash); color: var(--brand); font-weight: 600; font-size: 12.5px; }
+.hero h1 { margin-top: 26px; font-family: var(--font-serif); font-weight: 500; font-size: clamp(42px, 5.4vw, 72px); line-height: 1.04; letter-spacing: -.028em; color: var(--ink); }
+.hero h1 .line { display: block; }
+.hero-lede { margin-top: 26px; font-size: 19px; line-height: 1.6; color: var(--ink-2); max-width: 34em; }
+.hero-actions { margin-top: 34px; display: flex; gap: 12px; flex-wrap: wrap; }
+.hero-sources { margin-top: 38px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--ink-3); }
+.hero-sources ul { list-style: none; display: flex; gap: 8px; flex-wrap: wrap; }
+.hero-sources li { height: 28px; display: inline-flex; align-items: center; padding: 0 11px; border-radius: 7px; border: 1px solid var(--line); background: rgba(255,255,255,.7); font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); letter-spacing: .01em; }
+
+/* Helix figure */
+.figure { position: relative; height: 580px; }
+.figure canvas { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 300px; height: 560px; }
+.figure-axis { position: absolute; left: 50%; top: 8px; bottom: 8px; width: 1px; background: linear-gradient(transparent, rgba(24,34,96,.12) 15%, rgba(24,34,96,.12) 85%, transparent); }
+.annot { position: absolute; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.annot .card { display: grid; gap: 1px; padding: 9px 13px 10px; border-radius: 12px; background: rgba(255,255,255,.9); border: 1px solid var(--line); box-shadow: var(--shadow-2); backdrop-filter: blur(6px); }
+.annot .card b { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.annot .card b i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 18%, transparent); }
+.annot .card span { font-size: 12.5px; color: var(--ink-3); }
+.annot .lead { width: 30px; height: 1px; background: repeating-linear-gradient(90deg, var(--line-2) 0 4px, transparent 4px 7px); }
+.annot.left { flex-direction: row; }
+.annot.right { flex-direction: row-reverse; }
+.a1 { top: 13%; right: calc(50% + 104px); }
+.a2 { top: 34%; left: calc(50% + 104px); }
+.a3 { top: 59%; right: calc(50% + 104px); }
+.a4 { top: 80%; left: calc(50% + 104px); }
+
+/* Sequencing readout band: four traces and the bases, drifting slowly */
+.readout { position: relative; margin-top: 40px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(255,255,255,.65); overflow: hidden; height: 84px; }
+.readout-track { position: absolute; inset: 0 auto 0 0; display: flex; width: max-content; animation: drift 70s linear infinite; }
+.readout-track svg { height: 84px; width: 2400px; flex-shrink: 0; }
+.readout::before, .readout::after { content: ""; position: absolute; top: 0; bottom: 0; width: 120px; z-index: 1; pointer-events: none; }
+.readout::before { left: 0; background: linear-gradient(90deg, var(--canvas), transparent); }
+.readout::after { right: 0; background: linear-gradient(-90deg, var(--canvas), transparent); }
+@keyframes drift { to { transform: translateX(-2400px); } }
+
+/* Page load: one orchestrated entrance */
+.reveal { opacity: 0; transform: translateY(14px); animation: rise .9s var(--ease) forwards; }
+.d1 { animation-delay: .05s; } .d2 { animation-delay: .16s; } .d3 { animation-delay: .27s; } .d4 { animation-delay: .38s; } .d5 { animation-delay: .5s; } .d6 { animation-delay: .65s; }
+.fade { opacity: 0; animation: fadein 1.4s var(--ease) .3s forwards; }
+@keyframes rise { to { opacity: 1; transform: none; } }
+@keyframes fadein { to { opacity: 1; } }
+
+/* ---------- Sections ---------- */
+section.block { padding: 120px 0; }
+.kicker { display: inline-flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 500; color: var(--ink-3); }
+.kicker i { width: 22px; height: 2px; border-radius: 2px; background: var(--brand); }
+.h2 { margin-top: 14px; font-family: var(--font-serif); font-weight: 500; font-size: clamp(34px, 4vw, 52px); line-height: 1.08; letter-spacing: -.02em; color: var(--ink); }
+.lede { margin-top: 18px; font-size: 18px; color: var(--ink-2); line-height: 1.65; max-width: 36em; }
+
+/* What GeneSim does */
+.does { display: grid; grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr); gap: 64px; align-items: start; }
+.does-intro { position: sticky; top: calc(var(--nav-h) + 40px); }
+.does-intro .note { margin-top: 28px; padding: 16px 18px; border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--line); font-size: 14.5px; color: var(--ink-2); line-height: 1.6; box-shadow: var(--shadow-1); }
+.does-intro .note b { color: var(--ink); font-weight: 600; }
+.metrics { display: grid; gap: 14px; }
+.metric { --c: var(--ink-3); --cw: var(--surface-sunk);
+  display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 28px; align-items: center;
+  padding: 26px 28px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-1);
+  position: relative; overflow: hidden; transition: box-shadow .25s var(--ease), border-color .25s var(--ease); }
+.metric::before { content: ""; position: absolute; left: 0; top: 22px; bottom: 22px; width: 3px; border-radius: 0 3px 3px 0; background: var(--c); }
+.metric:hover { box-shadow: var(--shadow-2); border-color: var(--line-2); }
+.metric h3 { font-size: 19px; font-weight: 600; letter-spacing: -.01em; color: var(--ink); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.metric p { margin-top: 8px; font-size: 15px; color: var(--ink-2); line-height: 1.6; }
+.chips { margin-top: 14px; display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { height: 24px; display: inline-flex; align-items: center; padding: 0 9px; border-radius: 6px; font-size: 12px; font-weight: 500; background: var(--surface-sunk); border: 1px solid var(--line); color: var(--ink-2); }
+.chip.c { background: var(--cw); border-color: color-mix(in srgb, var(--c) 25%, white); color: color-mix(in srgb, var(--c) 75%, var(--ink)); }
+.illus { height: 128px; border-radius: var(--r-md); background: var(--surface-sunk); border: 1px solid var(--line); display: grid; place-items: center; padding: 12px; }
+.illus svg { width: 100%; height: 100%; overflow: visible; }
+.illus text { font-family: var(--font-mono); font-size: 12.5px; }
+
+.caps { margin-top: 64px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); }
+.cap { padding: 30px 28px 0 0; }
+.cap + .cap { padding-left: 28px; border-left: 1px solid var(--line); }
+.cap .ic { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-1); }
+.cap .ic svg { width: 20px; height: 20px; stroke: var(--brand); fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.cap h4 { margin-top: 16px; font-size: 17px; font-weight: 600; color: var(--ink); }
+.cap p { margin-top: 6px; font-size: 14.5px; color: var(--ink-2); line-height: 1.6; }
+
+/* How it works */
+.how { background: var(--surface); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.how-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 40px; flex-wrap: wrap; }
+.steps { margin-top: 56px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; counter-reset: step; position: relative; }
+.steps::before { content: ""; position: absolute; left: 22px; right: 22px; top: 21px; height: 1px; background: repeating-linear-gradient(90deg, var(--line-2) 0 6px, transparent 6px 11px); }
+.step { position: relative; }
+.step-no { position: relative; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line-2);
+  font-family: var(--font-mono); font-size: 14px; font-weight: 500; color: var(--brand); box-shadow: 0 0 0 6px var(--surface); }
+.step h3 { margin-top: 22px; font-size: 18px; font-weight: 600; color: var(--ink); letter-spacing: -.01em; }
+.step p { margin-top: 8px; font-size: 14.5px; color: var(--ink-2); line-height: 1.6; min-height: 5.2em; }
+.mock { margin-top: 20px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--canvas); padding: 14px; height: 168px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+.mock-bar { display: flex; gap: 5px; margin-bottom: 2px; }
+.mock-bar i { width: 7px; height: 7px; border-radius: 50%; background: #D5DBE5; }
+.mock-editor { flex: 1; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); padding: 10px 12px; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.6; letter-spacing: .04em; overflow: hidden; word-break: break-all; }
+.mock-editor .h { color: var(--accent); }
+.mock-src { display: flex; gap: 5px; }
+.mock-src span { height: 22px; padding: 0 8px; border-radius: 6px; display: inline-flex; align-items: center; font-size: 11px; font-weight: 500; background: var(--surface); border: 1px solid var(--line); color: var(--ink-2); }
+.mock-toggle { display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 10px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); font-size: 12px; font-weight: 500; color: var(--ink-2); }
+.mock-toggle .bx { width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid #C5CDDA; display: grid; place-items: center; }
+.mock-toggle.on { background: var(--cw); border-color: color-mix(in srgb, var(--c) 35%, white); color: var(--ink); box-shadow: inset 3px 0 0 var(--c); }
+.mock-toggle.on .bx { background: var(--c); border-color: var(--c); }
+.mock-toggle.on .bx::after { content: ""; width: 6px; height: 3px; border-left: 1.6px solid #fff; border-bottom: 1.6px solid #fff; transform: rotate(-45deg) translate(1px, -1px); }
+.mock-run { flex: 1; display: grid; place-items: center; text-align: center; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); }
+.mock-run .mini-helix { width: 46px; height: 62px; margin: 0 auto; }
+.mock-run small { display: block; margin-top: 6px; font-size: 11.5px; color: var(--ink-3); }
+.mock-rows { display: grid; gap: 7px; }
+.mock-row { display: grid; grid-template-columns: 16px 52px 1fr; gap: 8px; align-items: center; font-size: 11.5px; color: var(--ink-3); font-family: var(--font-mono); }
+.mock-row .nm { height: 8px; border-radius: 4px; background: #DDE2EA; }
+.mock-row .bars { display: grid; gap: 2px; }
+.mock-row .bars i { display: block; height: 4px; border-radius: 2px; }
+.mock-aln { margin-top: 2px; font-family: var(--font-mono); font-size: 11px; line-height: 1.35; letter-spacing: .05em; padding: 7px 9px; border-radius: 7px; background: var(--surface); border: 1px solid var(--line); white-space: pre; color: var(--ink); }
+.mock-aln .m { color: var(--ch-blosum); }
+.mock-aln .x { color: var(--ch-edit); }
+
+/* Research project */
+.research { background: var(--brand); color: #fff; position: relative; overflow: hidden; }
+.research::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image: linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px); background-size: 48px 48px;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 60%); mask-image: linear-gradient(90deg, transparent, #000 60%); }
+.research .wrap { position: relative; }
+.research .kicker { color: rgba(255,255,255,.66); }
+.research .kicker i { background: #A9B2FF; }
+.research-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 72px; align-items: start; }
+.research h2 { margin-top: 14px; font-family: var(--font-serif); font-weight: 500; font-size: clamp(34px, 4.2vw, 56px); line-height: 1.06; letter-spacing: -.02em; }
+.research .lede { color: rgba(255,255,255,.78); max-width: 34em; }
+.aims { margin-top: 40px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
+.aim { padding-top: 18px; border-top: 1px solid rgba(255,255,255,.16); }
+.aim h3 { font-family: var(--font-serif); font-size: 23px; font-weight: 500; font-style: italic; }
+.aim p { margin-top: 8px; font-size: 15px; line-height: 1.65; color: rgba(255,255,255,.75); }
+.facts { border-radius: var(--r-xl); background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14); padding: 8px 28px; backdrop-filter: blur(4px); }
+.facts dl { display: grid; }
+.facts .row { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 18px; padding: 18px 0; border-bottom: 1px solid rgba(255,255,255,.12); }
+.facts .row:last-child { border-bottom: 0; }
+.facts dt { font-size: 13.5px; color: rgba(255,255,255,.6); }
+.facts dd { font-size: 15px; color: #fff; line-height: 1.55; }
+.facts dd small { display: block; font-size: 13px; color: rgba(255,255,255,.6); }
+.facts .team { display: grid; gap: 8px; }
+.uni { display: flex; align-items: center; gap: 12px; }
+.uni .seal { width: 38px; height: 38px; flex-shrink: 0; border-radius: 50%; border: 1px solid rgba(255,255,255,.3); display: grid; place-items: center; font-family: var(--font-serif); font-size: 15px; font-weight: 600; letter-spacing: .02em; }
+
+/* Closing call to action */
+.cta { padding: 110px 0; }
+.cta-box { position: relative; overflow: hidden; border-radius: 28px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-2);
+  padding: 64px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 40px; align-items: center; }
+.cta-box h2 { font-family: var(--font-serif); font-weight: 500; font-size: clamp(30px, 3.6vw, 46px); line-height: 1.1; letter-spacing: -.02em; }
+.cta-box p { margin-top: 12px; font-size: 17px; color: var(--ink-2); max-width: 38em; }
+.cta-trace { position: absolute; left: 0; right: 0; bottom: 0; height: 60px; opacity: .55; pointer-events: none; }
+.cta-trace svg { width: 100%; height: 100%; }
+.cta-box > *:not(.cta-trace) { position: relative; }
+
+/* Footer */
+.foot { border-top: 1px solid var(--line); background: var(--surface); }
+.foot .wrap { padding-top: 48px; padding-bottom: 40px; display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 40px; }
+.foot-brand p { margin-top: 14px; font-size: 14px; color: var(--ink-3); line-height: 1.6; max-width: 30em; }
+.foot h4 { font-size: 13.5px; font-weight: 600; color: var(--ink); margin-bottom: 12px; }
+.foot ul { list-style: none; display: grid; gap: 8px; font-size: 14px; color: var(--ink-3); }
+.foot ul a:hover { color: var(--ink); }
+.foot-bottom { border-top: 1px solid var(--line); }
+.foot-bottom .wrap { padding-top: 18px; padding-bottom: 22px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--ink-3); }
+.channels-key { display: inline-flex; gap: 6px; align-items: center; }
+.channels-key i { width: 18px; height: 3px; border-radius: 3px; background: var(--c); }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1100px) {
+  .hero-grid { grid-template-columns: 1fr; min-height: 0; gap: 8px; }
+  .figure { height: 520px; }
+  .does { grid-template-columns: 1fr; gap: 40px; }
+  .does-intro { position: static; }
+  .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 48px; }
+  .steps::before { display: none; }
+  .research-grid { grid-template-columns: 1fr; gap: 48px; }
+  .foot .wrap { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 820px) {
+  :root { --gutter: 22px; }
+  .nav-links, .nav-right .btn-secondary { display: none; }
+  .menu-btn { display: inline-flex; }
+  .mobile-menu { position: fixed; z-index: 49; top: var(--nav-h); left: 0; right: 0; background: rgba(255,255,255,.97); border-bottom: 1px solid var(--line);
+    padding: 10px var(--gutter) 18px; display: grid; gap: 4px; box-shadow: var(--shadow-2);
+    transform: translateY(-8px); opacity: 0; visibility: hidden; transition: transform .2s var(--ease), opacity .2s var(--ease), visibility 0s linear .2s; }
+  .mobile-menu.open { transform: none; opacity: 1; visibility: visible; transition: transform .2s var(--ease), opacity .2s var(--ease); }
+  .mobile-menu a { height: 46px; display: flex; align-items: center; font-size: 16px; font-weight: 500; border-bottom: 1px solid var(--line); }
+  .mobile-menu a:last-child { border-bottom: 0; }
+  section.block { padding: 84px 0; }
+  .metric { grid-template-columns: 1fr; gap: 20px; padding: 22px; }
+  .caps { grid-template-columns: 1fr; }
+  .cap + .cap { padding-left: 0; border-left: 0; border-top: 1px solid var(--line); margin-top: 28px; }
+  .aims { grid-template-columns: 1fr; }
+  .cta-box { grid-template-columns: 1fr; padding: 40px 28px 70px; }
+  .annot { display: none; }
+}
+@media (max-width: 560px) {
+  .nav-right .btn-primary span.long { display: none; }
+  .hero { padding-top: calc(var(--nav-h) + 36px); }
+  .hero-lede { font-size: 17px; }
+  .hero-badge { font-size: 12.5px; gap: 8px; white-space: nowrap; max-width: 100%; }
+  .hero-badge b { font-size: 11.5px; padding: 0 8px; white-space: nowrap; }
+  .hero-actions .btn { width: 100%; }
+  .figure { height: 440px; }
+  .figure canvas { width: 240px; height: 440px; }
+  .steps { grid-template-columns: 1fr; }
+  .step p { min-height: 0; }
+  .facts { padding: 4px 20px; }
+  .facts .row { grid-template-columns: 1fr; gap: 4px; }
+  .foot .wrap { grid-template-columns: 1fr; gap: 28px; }
+}
+@media (max-width: 360px) { .hero-badge b { display: none; } .hero-badge { padding-left: 14px; } }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .reveal, .fade { animation: none; opacity: 1; transform: none; }
+  .readout-track { animation-duration: 400s; }
+}
+</style>
+</head>
+<body>
+
+<!-- Brand mark (same as the application) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="gs-mark" viewBox="0 0 32 32">
+      <rect width="32" height="32" rx="8" fill="#182260"/>
+      <path d="M6.5 12.2c4.6-6.2 9.8 6.2 19 0" stroke="#FFFFFF" stroke-width="2.3" fill="none" stroke-linecap="round"/>
+      <path d="M6.5 19.8c4.6-6.2 9.8 6.2 19 0" stroke="#A9B2FF" stroke-width="2.3" fill="none" stroke-linecap="round"/>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- ======================= Navigation ======================= -->
+<header class="nav" id="nav">
+  <div class="wrap">
+    <a href="#top" class="brand" aria-label="GeneSim, back to top">
+      <svg><use href="#gs-mark"/></svg>
+      <span class="brand-name">GeneSim</span>
+    </a>
+    <nav class="nav-links" aria-label="Page sections">
+      <a href="#top" data-section="top">Home</a>
+      <a href="#about" data-section="about">About</a>
+      <a href="#how" data-section="how">How it works</a>
+    </nav>
+    <div class="nav-right">
+      <a class="btn btn-primary btn-sm" data-app-link href="/search">
+        <span>Launch<span class="long"> app</span></span>
+        <svg class="arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+      </a>
+      <button class="menu-btn" id="menu-btn" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+<div class="mobile-menu" id="mobile-menu">
+  <a href="#top">Home</a>
+  <a href="#about">About</a>
+  <a href="#how">How it works</a>
+  <a href="#research">Research project</a>
+</div>
+
+<main id="top">
+  <!-- ======================= Hero ======================= -->
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="wrap hero-grid">
+      <div>
+        <div class="hero-badge reveal d1"><b>Research project</b>University of Sharjah, 2026/2027</div>
+        <h1 id="hero-title">
+          <span class="line reveal d2">Discover genetic</span>
+          <span class="line reveal d3">similarity, intelligently.</span>
+        </h1>
+        <p class="hero-lede reveal d4">GeneSim compares a protein or nucleotide sequence against about 20,000 human genes. Four complementary measures, from substitution-aware alignment to shared promoter motifs, show not just which genes are similar but in what way.</p>
+        <div class="hero-actions reveal d5">
+          <a class="btn btn-primary btn-lg" data-app-link href="/search">
+            Start exploring
+            <svg class="arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+          </a>
+          <a class="btn btn-secondary btn-lg" href="#how">See how it works</a>
+        </div>
+        <div class="hero-sources reveal d6">
+          <span>Sequences and profiles from</span>
+          <ul><li>NCBI RefSeq</li><li>UniProt</li><li>Ensembl</li><li>JASPAR 2024</li></ul>
+        </div>
+      </div>
+
+      <div class="figure fade" role="img" aria-label="An animated DNA double helix. Labels point to the four ways GeneSim measures similarity: alignment, k-mer, edit distance and motif.">
+        <div class="figure-axis"></div>
+        <canvas id="helix" aria-hidden="true"></canvas>
+        <div class="annot left a1" style="--c: var(--ch-blosum)"><div class="card"><b><i></i>Alignment</b><span>Conserved regions</span></div><div class="lead"></div></div>
+        <div class="annot right a2" style="--c: var(--ch-kmer)"><div class="card"><b><i></i>K-mer</b><span>Shared short words</span></div><div class="lead"></div></div>
+        <div class="annot left a3" style="--c: var(--ch-edit)"><div class="card"><b><i></i>Edit distance</b><span>Fewest edits apart</span></div><div class="lead"></div></div>
+        <div class="annot right a4" style="--c: var(--ch-motif)"><div class="card"><b><i></i>Motif</b><span>Shared regulation</span></div><div class="lead"></div></div>
+      </div>
+    </div>
+
+    <div class="readout" aria-hidden="true">
+      <div class="readout-track" id="readout-track"></div>
+    </div>
+  </section>
+
+  <!-- ======================= What GeneSim does ======================= -->
+  <section class="block" id="about" aria-labelledby="about-title">
+    <div class="wrap">
+      <div class="does">
+        <div class="does-intro">
+          <span class="kicker"><i></i>What GeneSim does</span>
+          <h2 class="h2" id="about-title">One sequence, four ways of seeing similarity.</h2>
+          <p class="lede">No single score captures everything that makes two genes alike. GeneSim runs the measures you choose side by side, keeps each on its own scale, and lets you rank by the one that answers your question.</p>
+          <div class="note"><b>Protein or nucleotide.</b> Every metric works on amino-acid and DNA sequences, each with scoring suited to the molecule.</div>
+        </div>
+
+        <div class="metrics">
+          <article class="metric" style="--c: var(--ch-blosum); --cw: var(--ch-blosum-wash)">
+            <div>
+              <h3>BLOSUM62 and DNA alignment</h3>
+              <p>Local alignment that rewards conserved regions. Proteins are scored with the BLOSUM62 substitution matrix and BLAST-style gap costs; nucleotides with match, mismatch and gap scores.</p>
+              <div class="chips"><span class="chip c">Sequence conservation</span><span class="chip">Protein</span><span class="chip">Nucleotide</span></div>
+            </div>
+            <div class="illus" aria-hidden="true"><svg viewBox="0 0 230 92" data-illus="align"></svg></div>
+          </article>
+
+          <article class="metric" style="--c: var(--ch-kmer); --cw: var(--ch-kmer-wash)">
+            <div>
+              <h3>K-mer similarity</h3>
+              <p>Breaks each sequence into short overlapping words, three letters for protein and seven for DNA, and measures the share they have in common. It needs no alignment, so GeneSim also uses it to narrow down candidates.</p>
+              <div class="chips"><span class="chip c">Shared composition</span><span class="chip">Alignment-free</span><span class="chip">Jaccard index</span></div>
+            </div>
+            <div class="illus" aria-hidden="true"><svg viewBox="0 0 230 92" data-illus="kmer"></svg></div>
+          </article>
+
+          <article class="metric" style="--c: var(--ch-edit); --cw: var(--ch-edit-wash)">
+            <div>
+              <h3>Edit distance</h3>
+              <p>Counts the insertions, deletions and substitutions needed to turn one sequence into the other, normalised by length. Simple, strict, and easy to interpret.</p>
+              <div class="chips"><span class="chip c">Character-level difference</span><span class="chip">Levenshtein</span></div>
+            </div>
+            <div class="illus" aria-hidden="true"><svg viewBox="0 0 230 92" data-illus="edit"></svg></div>
+          </article>
+
+          <article class="metric" style="--c: var(--ch-motif); --cw: var(--ch-motif-wash)">
+            <div>
+              <h3>JASPAR motif similarity</h3>
+              <p>Compares the transcription factor binding sites found in each gene's promoter, using JASPAR 2024 profiles. It can connect genes that are regulated alike even when their sequences differ.</p>
+              <div class="chips"><span class="chip c">Shared regulation</span><span class="chip">Promoter regions</span><span class="chip">JASPAR 2024</span></div>
+            </div>
+            <div class="illus" aria-hidden="true">
+              <svg viewBox="0 0 230 92">
+                <text x="0" y="23" fill="#66718A" style="font-family:var(--font-sans);font-size:11px">Gene A</text>
+                <text x="0" y="75" fill="#66718A" style="font-family:var(--font-sans);font-size:11px">Gene B</text>
+                <line x1="48" x2="226" y1="19" y2="19" stroke="#D2D9E4" stroke-width="2"/>
+                <line x1="48" x2="226" y1="71" y2="71" stroke="#D2D9E4" stroke-width="2"/>
+                <path d="M218 13 l8 6 -8 6" stroke="#D2D9E4" stroke-width="2" fill="none"/>
+                <path d="M218 65 l8 6 -8 6" stroke="#D2D9E4" stroke-width="2" fill="none"/>
+                <rect x="62" y="11" width="26" height="16" rx="4" fill="#D08A0E"/>
+                <rect x="112" y="11" width="18" height="16" rx="4" fill="#F3DCAA"/>
+                <rect x="160" y="11" width="30" height="16" rx="4" fill="#D08A0E"/>
+                <rect x="82" y="63" width="26" height="16" rx="4" fill="#D08A0E"/>
+                <rect x="136" y="63" width="30" height="16" rx="4" fill="#D08A0E"/>
+                <rect x="186" y="63" width="18" height="16" rx="4" fill="#F3DCAA"/>
+                <path d="M75 29 L95 61" stroke="#D08A0E" stroke-width="1.3" stroke-dasharray="3 3"/>
+                <path d="M175 29 L151 61" stroke="#D08A0E" stroke-width="1.3" stroke-dasharray="3 3"/>
+              </svg>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <div class="caps">
+        <div class="cap">
+          <div class="ic"><svg viewBox="0 0 24 24"><path d="M12 4v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M5 19.5h14"/></svg></div>
+          <h4>Fetch from three databases</h4>
+          <p>Retrieve sequences from NCBI RefSeq, UniProt or Ensembl by gene symbol or accession number, then send them straight to a search.</p>
+        </div>
+        <div class="cap">
+          <div class="ic"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="2.6"/><path d="M5 6v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6"/><path d="M5 12v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6v-6"/></svg></div>
+          <h4>Explore the gene database</h4>
+          <p>Browse about 20,000 human genes with their protein and nucleotide isoforms, and open any stored sequence.</p>
+        </div>
+        <div class="cap">
+          <div class="ic"><svg viewBox="0 0 24 24"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M21 20H3"/></svg></div>
+          <h4>See the results clearly</h4>
+          <p>Ranked tables, colour-coded alignments, heatmaps, metric-agreement plots and speed benchmarks you can explore interactively.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= How it works ======================= -->
+  <section class="block how" id="how" aria-labelledby="how-title">
+    <div class="wrap">
+      <div class="how-head">
+        <div>
+          <span class="kicker"><i></i>How it works</span>
+          <h2 class="h2" id="how-title">From sequence to insight in four steps.</h2>
+        </div>
+        <p class="lede" style="margin-top:0; max-width:30em">The whole workflow lives on one page, with each step's choices visible and every result traceable to the metric that produced it.</p>
+      </div>
+
+      <ol class="steps" style="list-style:none">
+        <li class="step">
+          <div class="step-no">1</div>
+          <h3>Enter or fetch a sequence</h3>
+          <p>Paste a protein or nucleotide sequence, open a FASTA file, or fetch one by gene symbol or accession.</p>
+          <div class="mock" aria-hidden="true">
+            <div class="mock-bar"><i></i><i></i><i></i></div>
+            <div class="mock-editor"><span class="h">&gt;QUERY</span><br><span style="color:#2F5FC4">M</span><span style="color:#A3329A">EE</span><span style="color:#7B6C0C">P</span><span style="color:#11805A">QS</span><span style="color:#A3329A">D</span><span style="color:#7B6C0C">P</span><span style="color:#11805A">S</span><span style="color:#2F5FC4">V</span><span style="color:#A3329A">E</span><span style="color:#7B6C0C">PP</span><span style="color:#2F5FC4">L</span><span style="color:#11805A">SQ</span><span style="color:#A3329A">E</span><span style="color:#11805A">T</span><span style="color:#2F5FC4">F</span><span style="color:#11805A">S</span><span style="color:#A3329A">D</span><span style="color:#2F5FC4">LW</span><span style="color:#C2352E">K</span><span style="color:#2F5FC4">LL</span><span style="color:#7B6C0C">P</span><span style="color:#A3329A">E</span><span style="color:#11805A">NN</span></div>
+            <div class="mock-src"><span>NCBI</span><span>UniProt</span><span>Ensembl</span></div>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-no">2</div>
+          <h3>Select similarity metrics</h3>
+          <p>Turn on any combination of the four metrics and choose which one ranks the results.</p>
+          <div class="mock" aria-hidden="true">
+            <div class="mock-toggle on" style="--c: var(--ch-blosum); --cw: var(--ch-blosum-wash)"><span class="bx"></span>Alignment</div>
+            <div class="mock-toggle on" style="--c: var(--ch-kmer); --cw: var(--ch-kmer-wash)"><span class="bx"></span>K-mer</div>
+            <div class="mock-toggle" style="--c: var(--ch-edit); --cw: var(--ch-edit-wash)"><span class="bx"></span>Edit distance</div>
+            <div class="mock-toggle on" style="--c: var(--ch-motif); --cw: var(--ch-motif-wash)"><span class="bx"></span>Motif</div>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-no">3</div>
+          <h3>Run the comparison</h3>
+          <p>For proteins, a k-mer index first narrows the field; alignment and edit distance then run in parallel across CPU cores.</p>
+          <div class="mock" aria-hidden="true">
+            <div class="mock-run">
+              <div>
+                <canvas class="mini-helix" id="mini-helix" width="92" height="124"></canvas>
+                <small>Comparing against the gene database</small>
+              </div>
+            </div>
+          </div>
+        </li>
+        <li class="step">
+          <div class="step-no">4</div>
+          <h3>Explore ranked results</h3>
+          <p>Sort matches by any metric, inspect the best alignment residue by residue, and compare metrics in charts.</p>
+          <div class="mock" aria-hidden="true">
+            <div class="mock-rows">
+              <div class="mock-row"><span>1</span><span class="nm"></span><span class="bars"><i style="width:88%;background:var(--ch-blosum)"></i><i style="width:46%;background:var(--ch-kmer)"></i><i style="width:64%;background:var(--ch-motif)"></i></span></div>
+              <div class="mock-row"><span>2</span><span class="nm" style="width:80%"></span><span class="bars"><i style="width:71%;background:var(--ch-blosum)"></i><i style="width:52%;background:var(--ch-kmer)"></i><i style="width:30%;background:var(--ch-motif)"></i></span></div>
+              <div class="mock-row"><span>3</span><span class="nm" style="width:90%"></span><span class="bars"><i style="width:58%;background:var(--ch-blosum)"></i><i style="width:33%;background:var(--ch-kmer)"></i><i style="width:48%;background:var(--ch-motif)"></i></span></div>
+            </div>
+            <div class="mock-aln">SQETF<span class="x">S</span>DLWK
+<span class="m">||||| ||||</span>
+SQETF<span class="x">A</span>DLWK</div>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ======================= Research project ======================= -->
+  <section class="block research" id="research" aria-labelledby="research-title">
+    <div class="wrap research-grid">
+      <div>
+        <span class="kicker"><i></i>Research project</span>
+        <h2 id="research-title">Effective and Efficient Gene Similarity Search</h2>
+        <p class="lede">GeneSim is a senior graduation project at the University of Sharjah. It asks a practical question: how can researchers find genes similar to a query sequence in a way that is both biologically meaningful and fast enough to use interactively?</p>
+        <div class="aims">
+          <div class="aim">
+            <h3>Effective</h3>
+            <p>Four complementary metrics capture sequence conservation, shared composition, edit cost and shared regulation, rather than relying on a single score.</p>
+          </div>
+          <div class="aim">
+            <h3>Efficient</h3>
+            <p>An inverted k-mer index narrows the search before costly alignment, slow metrics run in parallel across CPU cores, and promoter motif sets are cached for reuse.</p>
+          </div>
+        </div>
+      </div>
+
+      <aside class="facts" aria-label="Project details">
+        <dl>
+          <div class="row">
+            <dt>Institution</dt>
+            <dd><div class="uni"><span class="seal" aria-hidden="true">UoS</span><span>University of Sharjah<small>Computer Science &amp; Bioinformatics</small></span></div></dd>
+          </div>
+          <div class="row"><dt>Programme</dt><dd>Senior graduation project</dd></div>
+          <div class="row"><dt>Academic year</dt><dd>2026/2027</dd></div>
+          <div class="row">
+            <dt>Project team</dt>
+            <dd class="team">
+              <span>Hisham Alsadi<small>Similarity metrics</small></span>
+              <span>Yousef Ahmed Ibrahim<small>Database layer</small></span>
+              <span>Obaid Alabdouli<small>Web application backend</small></span>
+              <span>Ahmed Alsamiri<small>Web application frontend</small></span>
+            </dd>
+          </div>
+          <div class="row">
+            <dt>Supervision</dt>
+            <dd>Prof. Osman Abul<small>Supervisor</small><span style="display:block;margin-top:8px">Prof. Naved<small>Co-supervisor</small></span></dd>
+          </div>
+        </dl>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ======================= Call to action ======================= -->
+  <section class="cta" aria-labelledby="cta-title">
+    <div class="wrap">
+      <div class="cta-box">
+        <div>
+          <h2 id="cta-title">Ready to compare a sequence?</h2>
+          <p>Open GeneSim, paste a sequence or fetch one by name, and see how the four metrics rank its closest human genes.</p>
+        </div>
+        <a class="btn btn-primary btn-lg" data-app-link href="/search">
+          Start exploring
+          <svg class="arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+        </a>
+        <div class="cta-trace" aria-hidden="true"><svg id="cta-trace" viewBox="0 0 1200 60" preserveAspectRatio="none"></svg></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ======================= Footer ======================= -->
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-brand">
+      <a href="#top" class="brand"><svg><use href="#gs-mark"/></svg><span class="brand-name">GeneSim</span></a>
+      <p>Effective and Efficient Gene Similarity Search. A senior graduation project at the University of Sharjah.</p>
+    </div>
+    <div>
+      <h4>Explore</h4>
+      <ul><li><a data-app-link href="/search">Launch app</a></li><li><a href="#about">What GeneSim does</a></li><li><a href="#how">How it works</a></li><li><a href="#research">Research project</a></li></ul>
+    </div>
+    <div>
+      <h4>University</h4>
+      <ul><li>University of Sharjah</li><li>Computer Science &amp; Bioinformatics</li><li>Academic year 2026/2027</li></ul>
+    </div>
+    <div>
+      <h4>Data sources</h4>
+      <ul><li>NCBI RefSeq</li><li>UniProt</li><li>Ensembl</li><li>JASPAR 2024</li></ul>
+    </div>
+  </div>
+  <div class="foot-bottom">
+    <div class="wrap">
+      <span>GeneSim, University of Sharjah, 2026/2027</span>
+      <span class="channels-key" aria-hidden="true"><i style="--c: var(--ch-blosum)"></i><i style="--c: var(--ch-kmer)"></i><i style="--c: var(--ch-edit)"></i><i style="--c: var(--ch-motif)"></i></span>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* ---------------------------------------------------------------------------
+   Where the "Launch app" and "Start exploring" buttons go: the Search page.
+   --------------------------------------------------------------------------- */
+const GENESIM_APP_URL = '/search';
+document.querySelectorAll('[data-app-link]').forEach(a => a.setAttribute('href', GENESIM_APP_URL));
+
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const BASE_COLORS = { A: '#0A9384', T: '#E0512F', G: '#D08A0E', C: '#5A4BDB' };
+const PAIR = { A: 'T', T: 'A', G: 'C', C: 'G' };
+const SEQ = 'ATGGAGGAGCCGCAGTCAGATCCTAGCGTCGAGCCCCCTCTGAGTCAGGAAACATTTTCAGACCTATGGAAACTACTTCCTGAAAACAACG';
+
+/* ---------------------------------------------------------------------------
+   Hero helix (canvas, no libraries): two backbones and colour-coded base
+   pairs, drawn back to front so depth reads correctly.
+   --------------------------------------------------------------------------- */
+function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function shade(hex, depth, bg) {
+  const [r, g, b] = hexToRgb(hex), k = 0.66 * (1 - (depth + 1) / 2), t = bg || 244;
+  return `rgb(${Math.round(r + (t - r) * k)},${Math.round(g + (t - g) * k)},${Math.round(b + (t - b) * k)})`;
+}
+
+function makeHelix(canvas, opts) {
+  const o = Object.assign({ pairs: 20, radius: 0.36, speed: 0.0009, backbone: 7, rung: 3.6, node: 5.6, letters: true, tilt: -0.14, pad: 28 }, opts);
+  const ctx = canvas.getContext('2d');
+  let w = 0, h = 0, dpr = 1, raf = 0, running = false, t0 = performance.now(), last = 0;
+
+  function size() {
+    const r = canvas.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    w = Math.max(1, Math.round(r.width)); h = Math.max(1, Math.round(r.height));
+    canvas.width = w * dpr; canvas.height = h * dpr;
+  }
+  function draw(now) {
+    const phase = (now - t0) * (reduceMotion ? o.speed * 0.2 : o.speed);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    ctx.translate(w / 2, h / 2); ctx.rotate(o.tilt); ctx.translate(-w / 2, -h / 2);
+    const top = o.pad, span = h - 2 * o.pad, R = w * o.radius, cx = w / 2;
+    const twist = (Math.PI * 2) / 10.5, per = span / (o.pairs - 1);
+    const items = [];
+    const steps = (o.pairs - 1) * 8;
+    for (let s = 0; s < steps; s++) {
+      for (let k = 0; k < 2; k++) {
+        const u0 = s / 8, u1 = (s + 1) / 8;
+        const a0 = u0 * twist + phase + k * Math.PI, a1 = u1 * twist + phase + k * Math.PI;
+        items.push({ z: (Math.sin(a0) + Math.sin(a1)) / 2, t: 'b', k, x0: cx + R * Math.cos(a0), y0: top + u0 * per, x1: cx + R * Math.cos(a1), y1: top + u1 * per });
+      }
+    }
+    for (let i = 0; i < o.pairs; i++) {
+      const a = i * twist + phase, y = top + i * per;
+      const xa = cx + R * Math.cos(a), za = Math.sin(a), xb = cx - R * Math.cos(a), zb = -za;
+      const base = SEQ[i % SEQ.length], comp = PAIR[base];
+      items.push({ z: za * 0.5, t: 'r', x0: xa, x1: cx, y, c: BASE_COLORS[base], d: za });
+      items.push({ z: zb * 0.5, t: 'r', x0: xb, x1: cx, y, c: BASE_COLORS[comp], d: zb });
+      items.push({ z: za + 0.01, t: 'n', x: xa, y, c: BASE_COLORS[base], d: za, l: base, side: 1 });
+      items.push({ z: zb + 0.01, t: 'n', x: xb, y, c: BASE_COLORS[comp], d: zb, l: comp, side: -1 });
+    }
+    items.sort((p, q) => p.z - q.z);
+    ctx.lineCap = 'round';
+    for (const it of items) {
+      if (it.t === 'b') {
+        ctx.strokeStyle = shade(it.k ? '#5A4BDB' : '#182260', it.z);
+        ctx.lineWidth = o.backbone + it.z * o.backbone * 0.4;
+        ctx.beginPath(); ctx.moveTo(it.x0, it.y0); ctx.lineTo(it.x1, it.y1); ctx.stroke();
+      } else if (it.t === 'r') {
+        ctx.strokeStyle = shade(it.c, it.d);
+        ctx.lineWidth = o.rung + it.d * o.rung * 0.3;
+        ctx.beginPath(); ctx.moveTo(it.x0, it.y); ctx.lineTo(it.x1, it.y); ctx.stroke();
+      } else {
+        const r = Math.max(1.5, o.node + it.d * o.node * 0.38);
+        ctx.fillStyle = shade(it.c, it.d);
+        ctx.beginPath(); ctx.arc(it.x, it.y, r, 0, Math.PI * 2); ctx.fill();
+        if (it.d > 0.3) {
+          ctx.fillStyle = 'rgba(255,255,255,.55)';
+          ctx.beginPath(); ctx.arc(it.x - r * 0.3, it.y - r * 0.35, r * 0.32, 0, Math.PI * 2); ctx.fill();
+        }
+        if (o.letters && it.d > 0.55) {
+          ctx.fillStyle = `rgba(59,70,96,${(it.d - 0.55) * 1.6})`;
+          ctx.font = '500 11px "Geist Mono", ui-monospace, monospace';
+          ctx.textAlign = it.side > 0 ? 'left' : 'right';
+          ctx.fillText(it.l, it.x + it.side * (r + 7), it.y + 4);
+        }
+      }
+    }
+  }
+  function loop(now) {
+    if (!running) return;
+    if (now - last > 15) { draw(now); last = now; }
+    raf = requestAnimationFrame(loop);
+  }
+  size();
+  window.addEventListener('resize', () => { size(); draw(performance.now()); });
+  return {
+    start() { if (!running) { running = true; raf = requestAnimationFrame(loop); } },
+    stop() { running = false; cancelAnimationFrame(raf); },
+    draw
+  };
+}
+
+const hero = makeHelix(document.getElementById('helix'));
+const mini = makeHelix(document.getElementById('mini-helix'), { pairs: 9, radius: 0.32, speed: 0.0024, backbone: 3, rung: 1.8, node: 2.6, letters: false, tilt: 0, pad: 8 });
+
+// Only animate what is on screen, and nothing while the tab is hidden
+function watch(el, anim) {
+  let visible = false;
+  new IntersectionObserver(([e]) => { visible = e.isIntersecting; visible && !document.hidden ? anim.start() : anim.stop(); }, { threshold: 0.05 }).observe(el);
+  document.addEventListener('visibilitychange', () => { document.hidden ? anim.stop() : (visible && anim.start()); });
+  anim.draw(performance.now());
+}
+watch(document.getElementById('helix'), hero);
+watch(document.getElementById('mini-helix'), mini);
+
+/* ---------------------------------------------------------------------------
+   Sequencing readout: four smooth traces with the called bases above them.
+   Built once; CSS moves it.
+   --------------------------------------------------------------------------- */
+function readoutSVG(width, height, seed, withLetters) {
+  let s = seed;
+  const rnd = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+  const base = height - 8, colors = ['#5A4BDB', '#0A9384', '#E0512F', '#D08A0E'], letters = ['C', 'A', 'T', 'G'];
+  const peaks = [[], [], [], []], calls = [];
+  for (let x = 16; x < width - 8; x += 24) {
+    const ch = Math.floor(rnd() * 4);
+    peaks[ch].push({ x, h: (withLetters ? 26 : 22) + rnd() * (withLetters ? 26 : 22), w: 5.2 });
+    if (rnd() < 0.45) peaks[(ch + 1 + Math.floor(rnd() * 3)) % 4].push({ x: x + (rnd() - .5) * 6, h: 3 + rnd() * 7, w: 5.5 });
+    calls.push({ x, ch });
+  }
+  let out = `<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" preserveAspectRatio="none">`;
+  peaks.forEach((list, ci) => {
+    let d = `M0 ${base}`;
+    for (let x = 0; x <= width; x += 2) {
+      let y = 0;
+      for (const p of list) { const dx = (x - p.x) / p.w; if (dx > -4 && dx < 4) y += p.h * Math.exp(-dx * dx / 2); }
+      d += ` L${x} ${(base - y).toFixed(1)}`;
+    }
+    out += `<path d="${d}" fill="none" stroke="${colors[ci]}" stroke-width="1.5" stroke-linejoin="round" stroke-opacity=".85"/>`;
+  });
+  if (withLetters) {
+    out += calls.map(c => `<text x="${c.x}" y="14" text-anchor="middle" fill="${colors[c.ch]}" style="font-family:var(--font-mono);font-size:11.5px;font-weight:500">${letters[c.ch]}</text>`).join('');
+  }
+  return out + '</svg>';
+}
+const one = readoutSVG(2400, 84, 11, true);
+document.getElementById('readout-track').innerHTML = one + one;   // two copies loop seamlessly
+document.getElementById('cta-trace').outerHTML = readoutSVG(1200, 60, 5, false).replace('<svg ', '<svg id="cta-trace" ');
+
+
+/* ---------------------------------------------------------------------------
+   Metric illustrations: every residue is placed at an exact column so the
+   match marks, k-mer windows and edit labels line up in any font.
+   --------------------------------------------------------------------------- */
+const INK = '#0D1630', MUTE = '#98A1B3', LABEL = '#66718A';
+function residues(str, x0, y, step, colorAt) {
+  return [...str].map((ch, i) => ch === ' ' ? '' :
+    `<text x="${x0 + i * step}" y="${y}" text-anchor="middle" fill="${colorAt ? colorAt(i, ch) : INK}">${ch}</text>`).join('');
+}
+const label = (x, y, t, anchor) => `<text x="${x}" y="${y}" fill="${LABEL}" text-anchor="${anchor || 'start'}" style="font-family:var(--font-sans);font-size:11px">${t}</text>`;
+const ILLUS = {
+  align() {
+    const q = 'SQETFSDLWKL', m = 'SQEAFS-LWRL', x0 = 62, step = 15;
+    const mid = [...q].map((c, i) => m[i] === '-' ? ' ' : c === m[i] ? '|' : '·').join('');
+    return label(0, 26, 'Query') + label(0, 76, 'Match') +
+      residues(q, x0, 26, step) +
+      residues(mid, x0, 51, step, (i, ch) => ch === '|' ? '#5A4BDB' : '#C9B9B3') +
+      residues(m, x0, 76, step, (i, ch) => ch === '-' ? MUTE : ch !== q[i] ? '#E0512F' : INK);
+  },
+  kmer() {
+    const a = 'MKTAYIAKQR', b = 'GSMKTLHYIAKD', step = 15, xa = 30, xb = 20;
+    const shared = [[0, 2], [5, 8]];   // MKT and IAK appear in both
+    const box = (x0, i, y) => `<rect x="${x0 + i * step - step / 2 - 1}" y="${y - 15}" width="${3 * step + 2}" height="21" rx="5" fill="#E6F6F3" stroke="#0A9384" stroke-opacity=".55"/>`;
+    let out = shared.map(([i, j]) => box(xa, i, 26) + box(xb, j, 78)).join('');
+    out += shared.map(([i, j]) => {
+      const x1 = xa + (i + 1) * step, x2 = xb + (j + 1) * step;
+      return `<path d="M${x1} 32 C ${x1} 48, ${x2} 48, ${x2} 62" stroke="#0A9384" stroke-width="1.3" fill="none" stroke-dasharray="3 3"/>`;
+    }).join('');
+    return out + residues(a, xa, 26, step) + residues(b, xb, 78, step);
+  },
+  edit() {
+    const q = 'GATTACA-G', m = 'GATTCCATG', x0 = 28, step = 22;
+    const color = (s) => (i, ch) => ch === '-' ? MUTE : q[i] !== m[i] ? '#E0512F' : INK;
+    const pill = (i, text, w) => {
+      const cx = x0 + i * step;
+      return `<rect x="${cx - w / 2}" y="38" width="${w}" height="18" rx="9" fill="#FDEEEA"/>` +
+        `<text x="${cx}" y="51" text-anchor="middle" fill="#B8321C" style="font-family:var(--font-sans);font-size:10.5px">${text}</text>`;
+    };
+    return residues(q, x0, 26, step, color(q)) + pill(4, 'substitute', 64) + pill(7, 'insert', 42) + residues(m, x0, 76, step, color(m));
+  },
+};
+document.querySelectorAll('[data-illus]').forEach(svg => { svg.innerHTML = ILLUS[svg.dataset.illus](); });
+
+/* ---------------------------------------------------------------------------
+   Navigation: background on scroll, current section, mobile menu
+   --------------------------------------------------------------------------- */
+const nav = document.getElementById('nav');
+const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
+window.addEventListener('scroll', onScroll, { passive: true }); onScroll();
+
+const links = [...document.querySelectorAll('.nav-links a')];
+const sections = ['top', 'about', 'how'].map(id => id === 'top' ? document.querySelector('.hero') : document.getElementById(id));
+const sectionObserver = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (!e.isIntersecting) return;
+    const id = e.target.id || 'top';
+    links.forEach(a => a.classList.toggle('active', a.dataset.section === id));
+  });
+}, { rootMargin: '-45% 0px -50% 0px' });
+sections.forEach(s => s && sectionObserver.observe(s));
+
+const menuBtn = document.getElementById('menu-btn'), menu = document.getElementById('mobile-menu');
+menuBtn.addEventListener('click', () => {
+  const open = !menu.classList.contains('open');
+  menu.classList.toggle('open', open);
+  menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+});
+menu.querySelectorAll('a').forEach(a => a.addEventListener('click', () => { menu.classList.remove('open'); menuBtn.setAttribute('aria-expanded', 'false'); }));
+</script>
+</body>
+</html>
