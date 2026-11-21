@@ -33,7 +33,8 @@ from config import (
     VALID_AA,
     VALID_DNA,
     BLOSUM62_GAP_COSTS,
-    DEFAULT_GAP_COST
+    DEFAULT_GAP_COST,
+    TF_CACHE_PATH
 )
 from database_manager import GeneDatabase
 from metrics import (
@@ -58,7 +59,7 @@ from fetcher import (
     detect_accession
 )
 from visualizer import plot_bar_chart, plot_heatmap
-from kmer_index import build_index_from_database, get_candidate_sequences
+from kmer_index import get_candidate_sequences, get_search_index
 from parallel import alignment_similarities, edit_similarities, warm_up
 
 app = Flask(__name__)
@@ -79,6 +80,18 @@ else:
 def get_promoter_tfs(symbol):
     promoter = fetch_promoter(symbol)
     return cached_scan_motifs(symbol, promoter, BIO_MOTIFS) if promoter else set()
+
+
+def warm_up_index():
+    """Builds the protein k-mer index at start-up so the first search is fast."""
+    try:
+        db = GeneDatabase(db_path=DB_PATH)
+        rows = db.get_all_sequences_with_isoform('protein')
+        db.close()
+        get_search_index(rows, KMER_K)
+        print("K-mer index ready.")
+    except Exception as e:
+        print(f"K-mer index warm-up failed ({e}); the first search will build it.")
 
 
 def image_to_base64(path):
@@ -394,17 +407,18 @@ def api_search():
     if not all_seqs:
         return jsonify({'error': f'No {actual_mode} sequences found in database.'}), 400
 
-    # Apply k-mer candidate filtering to protein searches only
+    # Apply k-mer candidate filtering to protein searches only. The k-mer
+    # index is built once and reused (see kmer_index.get_search_index), and
+    # candidates are ranked by Jaccard so very long proteins do not crowd out
+    # the real relatives.
     candidate_seqs = all_seqs
 
     if actual_mode == 'protein':
-        kmer_index = build_index_from_database(all_seqs, k=KMER_K)
         candidate_seqs = get_candidate_sequences(
             query_seq,
             all_seqs,
             k=KMER_K,
-            top_n=80,
-            index=kmer_index
+            top_n=80
         )
 
     # ── Motif TF sets ──
@@ -412,9 +426,19 @@ def api_search():
     query_tfs = set()
     if 'motif' in metrics:
         query_tfs = get_promoter_tfs(query_label) if query_label != 'custom_sequence' else set()
+        # Only the query gene may be fetched from the internet (one request).
+        # Database genes use the saved TF cache only: fetching ~80 promoters
+        # one by one from Ensembl made the search hang for minutes. Genes
+        # without cached TF data get an empty set (Motif score 0).
+        tf_cache = {}
+        try:
+            with open(TF_CACHE_PATH, 'r') as f:
+                tf_cache = json.load(f)
+        except (OSError, ValueError):
+            pass
         gene_symbols = list(set(s for s, i, _ in candidate_seqs))
         for symbol in gene_symbols:
-            promoter_tfs[symbol] = get_promoter_tfs(symbol)
+            promoter_tfs[symbol] = set(tf_cache.get(symbol, []))
 
     # ── Run metrics ──
     kmer_k = KMER_K_DNA if actual_mode == 'dna' else KMER_K
@@ -596,6 +620,9 @@ def get_cpu_info():
     }
 
 
+BENCH_MAX_LEN = 1000  # longest protein (amino acids) used in the benchmark
+
+
 @app.route('/api/benchmark', methods=['POST'])
 def api_benchmark():
     n_pairs = int(request.json.get('n_pairs', 20))
@@ -609,12 +636,28 @@ def api_benchmark():
         if symbol not in seen:
             seen[symbol] = seq
 
-    genes = list(seen.keys())
-    all_pairs = [(a, b) for i, a in enumerate(genes) for b in genes[i + 1:]]
-    random.seed(42)
-    pairs = random.sample(all_pairs, min(n_pairs, len(all_pairs)))
+    # The database holds ~20,000 genes, so we must NOT build a list of every
+    # possible pair (about 200 million) or look up TF data for every gene.
+    # Pick the random pairs directly, and skip very long proteins because the
+    # pure-Python edit distance would take minutes on them.
+    genes = sorted(s for s, seq in seen.items() if len(seq) <= BENCH_MAX_LEN)
+    rng = random.Random(42)
+    n_wanted = min(n_pairs, len(genes) * (len(genes) - 1) // 2)
+    chosen = set()
+    while len(chosen) < n_wanted:
+        a, b = rng.sample(genes, 2)
+        chosen.add((a, b) if a < b else (b, a))
+    pairs = sorted(chosen)
 
-    tf_map = {s: get_promoter_tfs(s) for s in genes}
+    # Motif data: only read what is already cached (no internet requests).
+    # Genes without cached TF data are left out of the Motif correlation.
+    tf_cache = {}
+    try:
+        with open(TF_CACHE_PATH, 'r') as f:
+            tf_cache = json.load(f)
+    except (OSError, ValueError):
+        pass
+    tf_map = {s: set(tf_cache[s]) for s in {g for p in pairs for g in p} if s in tf_cache}
 
     metric_data = {
         'BLOSUM62':       {'times': [], 'cpu_times': [], 'scores': []},
@@ -673,7 +716,17 @@ def api_benchmark():
         times = np.array(d['times'])
         cpu_times = np.array(d['cpu_times'])
         scores = np.array(d['scores'])
-        corr = float(np.corrcoef(blosum_scores, scores)[0, 1]) if name != 'BLOSUM62' else 1.0
+        if name == 'BLOSUM62':
+            corr = 1.0
+        else:
+            idx = list(range(len(pairs)))
+            if name == 'Motif (JASPAR)':
+                idx = [i for i, (a, b) in enumerate(pairs) if a in tf_map and b in tf_map]
+            corr = 0.0
+            if len(idx) >= 3:
+                corr = float(np.corrcoef(blosum_scores[idx], scores[idx])[0, 1])
+            if corr != corr:  # NaN (constant scores) cannot be sent as JSON
+                corr = 0.0
         summary.append({
             'metric': name,
             'avg_ms': round(float(np.mean(times)), 3),
@@ -705,4 +758,5 @@ if __name__ == '__main__':
     # not delayed.
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
         threading.Thread(target=warm_up, daemon=True).start()
+        threading.Thread(target=warm_up_index, daemon=True).start()
     app.run(debug=True, port=int(os.environ.get('PORT', 5000)))
