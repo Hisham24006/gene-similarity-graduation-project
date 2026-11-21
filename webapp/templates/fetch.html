@@ -1,563 +1,678 @@
 {% extends "base.html" %}
-{% block title %}Fetch Sequence — GeneSim{% endblock %}
-{% block page_title %}Fetch Sequence{% endblock %}
-{% block page_sub %}Fetch DNA or protein sequences from NCBI, UniProt, or Ensembl{% endblock %}
+{% block title %}Fetch sequence · GeneSim{% endblock %}
+{% block body_class %}page-fetch{% endblock %}
 
 {% block head %}
 <style>
-    .source-card {
-        display: flex;
-        align-items: flex-start;
-        gap: 12px;
-        padding: 12px 14px;
-        border-radius: var(--radius-sm);
-        border: 1px solid var(--border-light);
-        background: var(--bg);
-        cursor: pointer;
-        transition: all 0.15s ease;
-        margin-bottom: 8px;
-    }
-    .source-card:hover {
-        border-color: var(--border);
-        background: #f0f0f4;
-    }
-    .source-card.active {
-        border-color: var(--accent);
-        background: var(--accent-light);
-    }
-    .source-card input[type="radio"] {
-        margin-top: 3px;
-        accent-color: var(--accent);
-    }
-    .source-title {
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--text);
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-    .source-desc {
-        font-size: 11px;
-        color: var(--text-muted);
-        margin-top: 2px;
-        line-height: 1.4;
-    }
-    .quick-chip {
-        display: inline-block;
-        padding: 3px 9px;
-        border-radius: 980px;
-        font-size: 11px;
-        font-family: var(--mono);
-        font-weight: 500;
-        color: var(--text-mid);
-        background: var(--bg);
-        border: 1px solid var(--border-light);
-        cursor: pointer;
-        transition: all 0.15s;
-    }
-    .quick-chip:hover {
-        background: var(--accent-light);
-        color: var(--accent);
-        border-color: var(--accent);
-    }
-    .seq-view-box {
-        max-height: 340px;
-        overflow-y: auto;
-        font-family: var(--mono);
-        font-size: 12px;
-        line-height: 1.8;
-        letter-spacing: 0.05em;
-        word-break: break-all;
-        white-space: pre-wrap;
-        background: var(--bg);
-        border: 1px solid var(--border-light);
-        border-radius: var(--radius-sm);
-        padding: 16px;
-        color: var(--text);
-        user-select: all;
-    }
-    .copy-toast {
-        position: fixed;
-        bottom: 28px;
-        right: 28px;
-        background: #1d1d1f;
-        color: #fff;
-        padding: 10px 18px;
-        border-radius: 980px;
-        font-size: 13px;
-        font-weight: 500;
-        box-shadow: 0 4px 14px rgba(0,0,0,0.18);
-        z-index: 1000;
-        opacity: 0;
-        transform: translateY(10px);
-        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-        pointer-events: none;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    .copy-toast.visible {
-        opacity: 1;
-        transform: translateY(0);
-    }
+/* ---------- Shared page hero (same rhythm as Search) ---------- */
+.hero { padding: 40px 0 26px; }
+.hero-inner { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; }
+.hero .page-title { font-size: 38px; }
+.hero .page-sub { font-size: 15.5px; max-width: 62ch; }
+
+/* ---------- Query composer ---------- */
+.fetch-panel { overflow: hidden; }
+.fetch-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: end; padding: 22px 24px 18px; }
+.query-field { position: relative; }
+.query-field label { display: block; font-size: 13px; font-weight: 500; color: var(--ink-2); margin-bottom: 7px; }
+.query-input-wrap { position: relative; }
+.query-input-wrap svg.lead { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; stroke: var(--ink-4); fill: none; stroke-width: 2; stroke-linecap: round; pointer-events: none; }
+#fetch-gene {
+  height: 48px; padding: 0 200px 0 44px; font-size: 16px; font-family: var(--font-mono); letter-spacing: .02em; text-transform: uppercase;
+  border-radius: 10px;
+}
+#fetch-gene::placeholder { text-transform: none; font-family: var(--font-sans); letter-spacing: 0; }
+.detect-badge {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; border-radius: 7px;
+  font-size: 12px; font-weight: 500; white-space: nowrap; max-width: 190px; overflow: hidden; text-overflow: ellipsis;
+  background: var(--surface-sunk); color: var(--ink-3); border: 1px solid var(--line);
+  transition: background .15s, color .15s, border-color .15s;
+}
+.detect-badge.acc { background: var(--accent-wash); color: var(--info); border-color: var(--info-line); }
+.detect-badge.acc::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.type-field label { display: block; font-size: 13px; font-weight: 500; color: var(--ink-2); margin-bottom: 7px; }
+.type-field .segmented { height: 48px; align-items: center; border-radius: 12px; }
+.type-field .segmented button { height: 40px; padding: 0 16px; border-radius: 9px; }
+.fetch-row .btn-lg { height: 48px; }
+.query-hint { padding: 0 24px 18px; font-size: 12.5px; color: var(--ink-3); line-height: 1.55; min-height: 20px; }
+.query-hint b { color: var(--info); font-weight: 600; }
+
+.sources { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 0 24px 22px; }
+.source-card {
+  position: relative; display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 12px; padding: 14px 14px 14px 14px;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; user-select: none;
+  transition: border-color .15s var(--ease), background .15s var(--ease), box-shadow .15s var(--ease), opacity .15s;
+}
+.source-card:hover { border-color: var(--line-2); }
+.source-card input { position: absolute; opacity: 0; pointer-events: none; }
+.source-card .radio { width: 18px; height: 18px; margin-top: 1px; border-radius: 50%; border: 1.5px solid #C5CDDA; background: var(--surface); display: grid; place-items: center; transition: border-color .15s; }
+.source-card .radio::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--brand); transform: scale(0); transition: transform .15s var(--ease); }
+.source-card.active { border-color: var(--accent-line); background: var(--accent-wash); box-shadow: inset 0 0 0 1px var(--accent-line); }
+.source-card.active .radio { border-color: var(--brand); }
+.source-card.active .radio::after { transform: scale(1); }
+.source-card input:focus-visible ~ .radio { box-shadow: var(--focus); }
+.source-card.overridden { opacity: .55; }
+.src-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; font-weight: 600; color: var(--ink); }
+.src-desc { font-size: 12.5px; color: var(--ink-3); margin-top: 3px; line-height: 1.5; }
+.src-ids { margin-top: 8px; font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-3); letter-spacing: .01em; }
+
+.suggest { border-top: 1px solid var(--line); background: #FBFCFD; padding: 14px 24px; display: flex; gap: 22px; flex-wrap: wrap; align-items: center; }
+.suggest-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.suggest-group .hint { margin-right: 2px; }
+.chip-btn {
+  height: 30px; padding: 0 11px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--surface);
+  font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--ink-2);
+  box-shadow: var(--shadow-1); transition: border-color .15s, background .15s, color .15s;
+}
+.chip-btn:hover { border-color: var(--accent-line); background: var(--accent-wash); color: var(--ink); }
+
+#uniprot-dna-hint { margin: 0 24px 18px; }
+
+/* ---------- Results ---------- */
+.result-area { margin-top: 28px; }
+.empty-ref { border: 1px dashed var(--line-2); border-radius: var(--r-lg); padding: 26px 28px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 32px; align-items: start; }
+.empty-ref h3 { font-size: 16px; font-weight: 600; color: var(--ink); }
+.empty-ref p { margin-top: 6px; font-size: 13.5px; color: var(--ink-3); line-height: 1.55; }
+.ref-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.ref-table th { text-align: left; font-weight: 500; color: var(--ink-3); padding: 0 12px 8px 0; border-bottom: 1px solid var(--line); }
+.ref-table td { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--line); color: var(--ink-2); vertical-align: top; }
+.ref-table tr:last-child td { border-bottom: 0; }
+.ref-table .mono { font-size: 12px; color: var(--ink); }
+
+.record-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 16px; }
+.record-kicker { font-size: 13px; color: var(--ink-3); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.record-title { margin-top: 6px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.record-title h2 { font-family: var(--font-serif); font-size: 34px; font-weight: 500; letter-spacing: -.015em; line-height: 1.1; color: var(--ink); word-break: break-all; }
+.record-title a.acc { font-family: var(--font-mono); font-size: 13.5px; color: var(--ink-2); display: inline-flex; gap: 6px; align-items: center; }
+.record-title a.acc svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.record-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); overflow: hidden; margin-bottom: 18px; }
+.fact { padding: 14px 18px; border-right: 1px solid var(--line); min-width: 0; }
+.fact:last-child { border-right: 0; }
+.fact .k { font-size: 12px; color: var(--ink-3); }
+.fact .v { margin-top: 3px; font-size: 17px; font-weight: 600; color: var(--ink); letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fact .v small { font-size: 12.5px; font-weight: 500; color: var(--ink-3); margin-left: 3px; }
+.fact .v a { color: var(--ink); }
+.fact .v a:hover { color: var(--accent); }
+
+.record-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
+.seq-panel { overflow: hidden; }
+.seq-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px 12px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.seq-toolbar .left { display: flex; align-items: center; gap: 12px; }
+.count-badge { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-3); height: 22px; padding: 0 8px; border-radius: var(--r-xs); background: var(--surface-sunk); border: 1px solid var(--line); display: inline-flex; align-items: center; }
+.seq-view-box { max-height: 460px; overflow: auto; padding: 18px 20px; font-family: var(--font-mono); font-size: 13px; line-height: 1.8; color: var(--ink); background: var(--surface); }
+.seq-view-box.plain { white-space: pre-wrap; word-break: break-all; letter-spacing: .05em; }
+.seq-fmt { display: grid; grid-template-columns: auto 1fr; gap: 0 18px; white-space: pre; letter-spacing: .05em; line-height: 24px; }
+.seq-fmt > div { line-height: 24px; }
+.seq-fmt .pos { color: var(--ink-4); text-align: right; font-size: 12px; user-select: none; font-variant-numeric: tabular-nums; }
+.seq-fmt .ln span.blk { margin-right: .9em; }
+.seq-fmt .fasta-h { grid-column: 1 / -1; color: var(--accent); }
+.colored .r-hyd { color: #2F5FC4; } .colored .r-pos { color: #C2352E; } .colored .r-neg { color: #A3329A; }
+.colored .r-pol { color: #11805A; } .colored .r-cys { color: #C4600E; } .colored .r-gly { color: #A87406; }
+.colored .r-pro { color: #7B6C0C; } .colored .r-aro { color: #0A8590; }
+.colored .n-a { color: #0A8A7C; } .colored .n-c { color: #4F41CF; } .colored .n-g { color: #B07208; } .colored .n-t { color: #D2472A; } .colored .n-n { color: var(--ink-4); }
+.seq-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 20px; border-top: 1px solid var(--line); background: var(--surface-sunk); font-size: 12px; color: var(--ink-3); }
+.color-toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+
+.side-stack { display: grid; gap: 18px; }
+.side-panel .panel-body { display: grid; gap: 14px; }
+.desc-text { font-size: 14px; color: var(--ink-2); line-height: 1.6; word-break: break-word; }
+.comp-list { display: grid; gap: 9px; }
+.comp-row { display: grid; grid-template-columns: 112px 1fr 46px; gap: 10px; align-items: center; font-size: 12.5px; }
+.comp-row .lab { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.comp-row .bar { height: 6px; border-radius: 6px; background: #EBEEF3; overflow: hidden; }
+.comp-row .bar i { display: block; height: 100%; border-radius: 6px; background: var(--brand); opacity: .8; }
+.comp-row .val { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 500; }
+.cta-panel { padding: 20px; background: var(--brand); border-color: var(--brand); color: #fff; display: grid; gap: 12px; }
+.cta-panel .t { font-size: 15px; font-weight: 600; }
+.cta-panel .d { font-size: 13px; color: rgba(255,255,255,.72); line-height: 1.55; }
+.cta-panel .btn { background: #fff; color: var(--brand); width: 100%; }
+.cta-panel .btn:hover { background: #EEF0FD; }
+.cta-panel .mono { color: #fff; }
+
+#fetch-note, #fetch-error-box { margin-bottom: 16px; }
+
+@media (max-width: 1080px) {
+  .record-grid { grid-template-columns: 1fr; }
+  .empty-ref { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 860px) {
+  .hero-inner { flex-direction: column; align-items: stretch; }
+  .fetch-row { grid-template-columns: 1fr; }
+  .sources { grid-template-columns: 1fr; }
+  .record-head { flex-direction: column; align-items: flex-start; }
+  .record-actions { justify-content: flex-start; }
+}
+@media (max-width: 640px) {
+  .hero .page-title { font-size: 30px; }
+  #fetch-gene { padding-right: 16px; }
+  .detect-badge { display: none; }
+  .empty-ref { padding: 20px; }
+  .ref-table th:nth-child(4), .ref-table td:nth-child(4) { display: none; }
+}
 </style>
+{% endblock %}
+
+{% block page_header %}
+<section class="hero">
+  <div class="wrap hero-inner">
+    <div>
+      <h1 class="page-title">Fetch a sequence</h1>
+      <p class="page-sub">Retrieve a protein or nucleotide sequence from NCBI RefSeq, UniProt or Ensembl by gene symbol or accession number. Review it here, then send it straight to similarity search.</p>
+    </div>
+  </div>
+</section>
 {% endblock %}
 
 {% block content %}
 
-<div style="display:grid; grid-template-columns:360px 1fr; gap:20px; align-items:start;">
+<!-- ======================= Query ======================= -->
+<section class="panel fetch-panel" aria-label="Sequence query">
+  <div class="fetch-row">
+    <div class="query-field">
+      <label for="fetch-gene">Gene symbol or accession number</label>
+      <div class="query-input-wrap">
+        <svg class="lead" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+        <input type="text" id="fetch-gene" class="input" placeholder="TP53, NP_000537.3 or P04637"
+               autocomplete="off" spellcheck="false" aria-describedby="query-kind-hint"
+               oninput="onQueryInput()" onkeydown="if(event.key==='Enter') executeFetch()">
+        <span class="detect-badge" id="detect-badge">Gene symbol</span>
+      </div>
+    </div>
+    <div class="type-field">
+      <label id="type-label">Sequence type</label>
+      <div class="segmented" role="radiogroup" aria-labelledby="type-label">
+        <button type="button" id="chip-type-protein" role="radio" aria-pressed="true" onclick="selectSeqType('protein')">Protein</button>
+        <button type="button" id="chip-type-dna" role="radio" aria-pressed="false" onclick="selectSeqType('dna')">Nucleotide</button>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-lg" onclick="executeFetch()" id="fetch-btn">
+      <svg viewBox="0 0 24 24"><path d="M12 4v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M5 19.5h14"/></svg>
+      Fetch sequence
+    </button>
+  </div>
+  <div class="query-hint" id="query-kind-hint">Accepts RefSeq (NP_, NM_, XP_, XM_), UniProt (P04637, P04637-2) and Ensembl (ENSP, ENST, ENSG) IDs.</div>
 
-    <!-- Left: Fetch Control Panel -->
+  <div class="sources" role="radiogroup" aria-label="Database to fetch from">
+    <label class="source-card active" id="card-ncbi" onclick="selectSource('ncbi')">
+      <input type="radio" name="fetch_source" value="ncbi" checked>
+      <span class="radio"></span>
+      <span>
+        <span class="src-title">NCBI RefSeq <span class="tag">Protein and nucleotide</span></span>
+        <span class="src-desc" style="display:block">Curated reference sequences from NCBI Entrez.</span>
+        <span class="src-ids" style="display:block">NP_ XP_ NM_ XM_ NR_ XR_</span>
+      </span>
+    </label>
+    <label class="source-card" id="card-uniprot" onclick="selectSource('uniprot')">
+      <input type="radio" name="fetch_source" value="uniprot">
+      <span class="radio"></span>
+      <span>
+        <span class="src-title">UniProt <span class="tag">Protein only</span></span>
+        <span class="src-desc" style="display:block">Reviewed Swiss-Prot entries first, then unreviewed human proteins.</span>
+        <span class="src-ids" style="display:block">P04637 P04637-2</span>
+      </span>
+    </label>
+    <label class="source-card" id="card-ensembl" onclick="selectSource('ensembl')">
+      <input type="radio" name="fetch_source" value="ensembl">
+      <span class="radio"></span>
+      <span>
+        <span class="src-title">Ensembl <span class="tag">Canonical transcript</span></span>
+        <span class="src-desc" style="display:block">EMBL-EBI canonical transcripts, as protein or spliced cDNA.</span>
+        <span class="src-ids" style="display:block">ENSG ENST ENSP</span>
+      </span>
+    </label>
+  </div>
+
+  <div id="uniprot-dna-hint" class="notice notice-info hidden">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>
+    <div id="uniprot-dna-text">UniProt stores protein sequences only. Choose NCBI or Ensembl to fetch nucleotide sequences.</div>
+  </div>
+
+  <div class="suggest">
+    <div class="suggest-group">
+      <span class="hint">Genes</span>
+      <button class="chip-btn" onclick="setGene('TP53')">TP53</button>
+      <button class="chip-btn" onclick="setGene('BRCA1')">BRCA1</button>
+      <button class="chip-btn" onclick="setGene('EGFR')">EGFR</button>
+      <button class="chip-btn" onclick="setGene('KRAS')">KRAS</button>
+      <button class="chip-btn" onclick="setGene('MYC')">MYC</button>
+      <button class="chip-btn" onclick="setGene('INS')">INS</button>
+      <button class="chip-btn" onclick="setGene('GAPDH')">GAPDH</button>
+    </div>
+    <div class="suggest-group">
+      <span class="hint">Accessions</span>
+      <button class="chip-btn" onclick="setGene('NP_000537.3')" title="RefSeq protein: TP53">NP_000537.3</button>
+      <button class="chip-btn" onclick="setGene('NM_004985.5')" title="RefSeq mRNA: KRAS">NM_004985.5</button>
+      <button class="chip-btn" onclick="setGene('P04637-2')" title="UniProt isoform: TP53 isoform 2">P04637-2</button>
+      <button class="chip-btn" onclick="setGene('ENST00000269305')" title="Ensembl transcript: TP53-201">ENST00000269305</button>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= Result ======================= -->
+<section class="result-area" aria-live="polite">
+
+  <div id="fetch-empty" class="empty-ref">
     <div>
-        <div class="card">
-            <div class="card-title">Gene Query</div>
-            <div class="form-group">
-                <label class="form-label" for="fetch-gene">Gene symbol or accession number</label>
-                <input type="text" id="fetch-gene" class="form-input"
-                       placeholder="e.g. TP53, NP_000537.3, P04637"
-                       oninput="onQueryInput()"
-                       onkeydown="if(event.key==='Enter') executeFetch()">
-                <div id="query-kind-hint" class="text-muted text-sm mt-8">
-                    Accepts RefSeq (NP_, NM_, XP_, XM_), UniProt (P04637, P04637-2) and Ensembl (ENSP, ENST, ENSG) IDs.
-                </div>
-            </div>
-            <div>
-                <span class="text-muted text-sm" style="display:block; margin-bottom:6px;">Quick suggestions:</span>
-                <div style="display:flex; flex-wrap:wrap; gap:6px;">
-                    <span class="quick-chip" onclick="setGene('TP53')">TP53</span>
-                    <span class="quick-chip" onclick="setGene('BRCA1')">BRCA1</span>
-                    <span class="quick-chip" onclick="setGene('EGFR')">EGFR</span>
-                    <span class="quick-chip" onclick="setGene('KRAS')">KRAS</span>
-                    <span class="quick-chip" onclick="setGene('MYC')">MYC</span>
-                    <span class="quick-chip" onclick="setGene('INS')">INS</span>
-                    <span class="quick-chip" onclick="setGene('GAPDH')">GAPDH</span>
-                </div>
-                <span class="text-muted text-sm" style="display:block; margin:10px 0 6px;">Accession examples:</span>
-                <div style="display:flex; flex-wrap:wrap; gap:6px;">
-                    <span class="quick-chip" onclick="setGene('NP_000537.3')" title="RefSeq protein: TP53">NP_000537.3</span>
-                    <span class="quick-chip" onclick="setGene('NM_004985.5')" title="RefSeq mRNA: KRAS">NM_004985.5</span>
-                    <span class="quick-chip" onclick="setGene('P04637-2')" title="UniProt isoform: TP53 isoform 2">P04637-2</span>
-                    <span class="quick-chip" onclick="setGene('ENST00000269305')" title="Ensembl transcript: TP53-201">ENST00000269305</span>
-                </div>
-            </div>
+      <h3>What you can fetch</h3>
+      <p>Type a gene symbol and pick a database, or paste an accession number. An accession names one exact record, so it decides the database and, except for Ensembl gene IDs, the sequence type.</p>
+    </div>
+    <table class="ref-table">
+      <thead><tr><th>Format</th><th>Example</th><th>Fetched from</th><th>Returns</th></tr></thead>
+      <tbody>
+        <tr><td>Gene symbol</td><td class="mono">TP53</td><td>The database you choose</td><td>The type you choose</td></tr>
+        <tr><td>RefSeq protein</td><td class="mono">NP_000537.3</td><td>NCBI</td><td>Protein</td></tr>
+        <tr><td>RefSeq RNA</td><td class="mono">NM_004985.5</td><td>NCBI</td><td>Nucleotide</td></tr>
+        <tr><td>UniProt</td><td class="mono">P04637-2</td><td>UniProt</td><td>Protein</td></tr>
+        <tr><td>Ensembl transcript or protein</td><td class="mono">ENST00000269305</td><td>Ensembl</td><td>cDNA or protein</td></tr>
+        <tr><td>Ensembl gene</td><td class="mono">ENSG00000141510</td><td>Ensembl</td><td>The type you choose</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div id="fetch-error-box" class="notice notice-err hidden" role="alert">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg>
+    <div id="fetch-error-text"></div>
+  </div>
+
+  <div id="fetch-result-content" class="hidden">
+    <div id="fetch-note" class="notice notice-info hidden">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>
+      <div id="fetch-note-text"></div>
+    </div>
+
+    <div class="record-head">
+      <div>
+        <div class="record-kicker" id="record-kicker"></div>
+        <div class="record-title">
+          <h2 id="record-symbol"></h2>
+          <a class="acc" id="record-acc" href="#" target="_blank" rel="noopener noreferrer"></a>
         </div>
-
-        <div class="card">
-            <div class="card-title">Choose Website to Fetch From</div>
-
-            <label class="source-card active" id="card-ncbi" onclick="selectSource('ncbi')">
-                <input type="radio" name="fetch_source" value="ncbi" checked>
-                <div>
-                    <div class="source-title">
-                        <span>NCBI RefSeq</span>
-                        <span style="font-size:10px; background:#e1f0ff; color:var(--accent); padding:2px 6px; border-radius:4px;">Protein + DNA</span>
-                    </div>
-                    <div class="source-desc">Curated reference sequences directly from NCBI Entrez RefSeq.</div>
-                </div>
-            </label>
-
-            <label class="source-card" id="card-uniprot" onclick="selectSource('uniprot')">
-                <input type="radio" name="fetch_source" value="uniprot">
-                <div>
-                    <div class="source-title">
-                        <span>UniProt</span>
-                        <span style="font-size:10px; background:#eaf5ea; color:var(--green); padding:2px 6px; border-radius:4px;">Protein (Swiss-Prot)</span>
-                    </div>
-                    <div class="source-desc">Manually annotated and reviewed human protein isoforms.</div>
-                </div>
-            </label>
-
-            <label class="source-card" id="card-ensembl" onclick="selectSource('ensembl')">
-                <input type="radio" name="fetch_source" value="ensembl">
-                <div>
-                    <div class="source-title">
-                        <span>Ensembl</span>
-                        <span style="font-size:10px; background:#f4ebff; color:var(--purple); padding:2px 6px; border-radius:4px;">Genomic & Canonical</span>
-                    </div>
-                    <div class="source-desc">European Bioinformatics Institute (EMBL-EBI) canonical transcripts.</div>
-                </div>
-            </label>
-        </div>
-
-        <div class="card">
-            <div class="card-title">Sequence Type</div>
-            <div class="toggle-group">
-                <label class="toggle-chip checked" id="chip-type-protein" onclick="selectSeqType('protein')">
-                    <input type="radio" name="seq_type" value="protein" checked>
-                    <span class="dot"></span> Protein (Amino Acid)
-                </label>
-                <label class="toggle-chip" id="chip-type-dna" onclick="selectSeqType('dna')">
-                    <input type="radio" name="seq_type" value="dna">
-                    <span class="dot"></span> DNA (mRNA / Nucleotide)
-                </label>
-            </div>
-            <div id="uniprot-dna-hint" class="text-muted text-sm mt-8 hidden" style="color:var(--orange);">
-                ℹ UniProt specializes in protein sequences. Switch to NCBI or Ensembl for DNA.
-            </div>
-        </div>
-
-        <button class="btn btn-primary" style="width:100%;" onclick="executeFetch()" id="fetch-btn">
-            📥 Fetch Sequence
+      </div>
+      <div class="record-actions">
+        <button class="btn btn-secondary btn-sm" onclick="copySequence()">
+          <svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Copy sequence
         </button>
+        <button class="btn btn-secondary btn-sm" onclick="copyFasta()">
+          <svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>Copy FASTA
+        </button>
+        <button class="btn btn-secondary btn-sm" onclick="downloadFasta()">
+          <svg viewBox="0 0 24 24"><path d="M12 4v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M5 19.5h14"/></svg>Download FASTA
+        </button>
+        <a id="btn-view-source" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">
+          <svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"/></svg><span id="btn-view-source-label">View on source</span>
+        </a>
+      </div>
     </div>
 
-    <!-- Right: Fetched Sequence Viewer -->
-    <div>
-        <div id="fetch-empty" class="card" style="text-align:center; padding:64px 24px;">
-            <div style="font-size:52px; margin-bottom:18px">📥</div>
-            <div style="font-size:17px; font-weight:600; margin-bottom:8px; color:var(--text)">Fetch a Gene Sequence</div>
-            <div class="text-muted" style="font-size:13px; max-width:380px; margin:0 auto; line-height:1.6">
-                Enter a gene symbol and pick a database website (NCBI, UniProt, or Ensembl), or enter an accession number to fetch that exact record.
-                You can review and copy the sequence before continuing to similarity search.
-            </div>
+    <div class="panel facts" id="fetch-stats"></div>
+
+    <div class="record-grid">
+      <div class="panel seq-panel">
+        <div class="seq-toolbar">
+          <div class="left">
+            <span class="panel-title">Sequence</span>
+            <span class="count-badge" id="char-count-badge"></span>
+          </div>
+          <div class="segmented" role="tablist" aria-label="Sequence view">
+            <button class="tab-btn" id="tab-view-fmt" role="tab" aria-selected="true" onclick="switchView('fmt')">Formatted</button>
+            <button class="tab-btn" id="tab-view-raw" role="tab" aria-selected="false" onclick="switchView('raw')">Plain sequence</button>
+            <button class="tab-btn" id="tab-view-fasta" role="tab" aria-selected="false" onclick="switchView('fasta')">FASTA format</button>
+          </div>
         </div>
-
-        <div id="fetch-error-box" class="alert alert-error hidden"></div>
-
-        <div id="fetch-result-content" class="hidden">
-            <!-- Note when an accession decided the database/type, or a non-human record -->
-            <div id="fetch-note" class="alert alert-info hidden" style="padding:8px 12px; font-size:12px; margin-bottom:12px; line-height:1.4;"></div>
-
-            <!-- Stats Row -->
-            <div class="stat-row" id="fetch-stats"></div>
-
-            <!-- Description Card -->
-            <div class="card" id="desc-card" style="margin-bottom:16px;">
-                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
-                    <div class="card-title" style="margin-bottom:0">Description & Header</div>
-                    <a id="desc-source-link" href="#" target="_blank" rel="noopener noreferrer"
-                       style="font-size:12px; color:var(--accent); text-decoration:none; font-weight:500; display:inline-flex; align-items:center; gap:4px;">
-                        🌐 View original entry on website ↗
-                    </a>
-                </div>
-                <div id="fetch-desc-text" style="font-size:13px; color:var(--text-mid); line-height:1.6;"></div>
-            </div>
-
-            <!-- Sequence Viewer Card -->
-            <div class="card">
-                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <div class="card-title" style="margin-bottom:0">Sequence Viewer</div>
-                        <span id="char-count-badge" style="font-size:11px; font-family:var(--mono); color:var(--text-muted); background:var(--bg); border:1px solid var(--border-light); padding:2px 8px; border-radius:980px;"></span>
-                    </div>
-                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                        <a id="btn-view-source" href="#" target="_blank" rel="noopener noreferrer"
-                           class="btn btn-ghost btn-sm"
-                           style="color:var(--accent); text-decoration:none; display:inline-flex; align-items:center; gap:5px;">
-                            🌐 View on Source ↗
-                        </a>
-                        <button class="btn btn-ghost btn-sm" onclick="copySequence()">
-                            📋 Copy Sequence
-                        </button>
-                        <button class="btn btn-ghost btn-sm" onclick="copyFasta()">
-                            📋 Copy FASTA
-                        </button>
-                    </div>
-                </div>
-
-                <div class="tab-bar" style="margin-bottom:12px;">
-                    <button class="tab-btn active" id="tab-view-raw" onclick="switchView('raw')">Plain Sequence</button>
-                    <button class="tab-btn" id="tab-view-fasta" onclick="switchView('fasta')">FASTA Format</button>
-                </div>
-
-                <div id="seq-view-raw" class="seq-view-box"></div>
-                <div id="seq-view-fasta" class="seq-view-box hidden"></div>
-            </div>
-
-            <!-- Continue to search card -->
-            <div class="card" style="background:linear-gradient(180deg, #fbfbfd 0%, #f4f6fa 100%); border:1px solid #d8e2f0;">
-                <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px;">
-                    <div>
-                        <div style="font-weight:600; font-size:15px; color:var(--text);">Ready for Similarity Search?</div>
-                        <div class="text-muted text-sm" style="margin-top:4px;">
-                            Compare this sequence against 60 human genes in the database using BLOSUM62, K-mer, Edit Distance, and Motif similarity.
-                        </div>
-                    </div>
-                    <button class="btn btn-primary" onclick="proceedToSearch()">
-                        🔍 Use in Similarity Search →
-                    </button>
-                </div>
-            </div>
+        <div id="seq-view-fmt" class="seq-view-box colored"></div>
+        <div id="seq-view-raw" class="seq-view-box plain hidden"></div>
+        <div id="seq-view-fasta" class="seq-view-box plain hidden"></div>
+        <div class="seq-foot">
+          <span id="seq-foot-text">60 residues per line, in blocks of 10</span>
+          <label class="color-toggle"><span class="switch"><input type="checkbox" id="color-toggle" checked><span></span></span>Colour residues</label>
         </div>
+      </div>
+
+      <div class="side-stack">
+        <div class="panel cta-panel">
+          <div class="t">Ready for similarity search</div>
+          <div class="d" id="cta-text">Compare this sequence against 20,000 human genes using BLOSUM62, k-mer, edit distance and motif similarity.</div>
+          <button class="btn btn-lg" onclick="proceedToSearch()">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>Use in similarity search
+          </button>
+        </div>
+        <div class="panel side-panel" id="desc-card">
+          <div class="panel-head">
+            <span class="panel-title">Description</span>
+            <a id="desc-source-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-ghost btn-sm">Open entry</a>
+          </div>
+          <div class="panel-body">
+            <div class="desc-text" id="fetch-desc-text"></div>
+          </div>
+        </div>
+        <div class="panel side-panel">
+          <div class="panel-head"><span class="panel-title" id="comp-title">Composition</span><span class="panel-sub" id="comp-sub"></span></div>
+          <div class="panel-body"><div class="comp-list" id="comp-list"></div></div>
+        </div>
+      </div>
     </div>
-</div>
+  </div>
+</section>
+{% endblock %}
 
-<!-- Floating Copy Confirmation Toast -->
-<div class="copy-toast" id="copy-toast">
-    <span>✓</span> <span id="toast-msg">Copied to clipboard!</span>
-</div>
-
+{% block scripts %}
 <script>
 let currentSource = 'ncbi';
 let currentSeqType = 'protein';
 let fetchedData = null;
-let currentViewMode = 'raw';
+let currentViewMode = 'fmt';
+const $ = (id) => document.getElementById(id);
+const esc = GS.escape;
+const SOURCE_NAMES = { ncbi: 'NCBI RefSeq', uniprot: 'UniProt', ensembl: 'Ensembl' };
 
 function setGene(symbol) {
-    document.getElementById('fetch-gene').value = symbol;
-    onQueryInput();
-    executeFetch();
+  $('fetch-gene').value = symbol;
+  onQueryInput();
+  executeFetch();
 }
 
 // Mirrors ACCESSION_PATTERNS in similarity/fetcher.py (the server decides).
 const UNIPROT_RE = '(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})(?:-\\d+)?';
 const ACCESSION_KINDS = [
-    [/^(?:NP|XP)_\d+(?:\.\d+)?$/,       'RefSeq protein',     'NCBI',    'protein'],
-    [/^(?:NM|XM|NR|XR)_\d+(?:\.\d+)?$/, 'RefSeq RNA',         'NCBI',    'DNA'],
-    [/^ENSP\d{11}(?:\.\d+)?$/,          'Ensembl protein',    'Ensembl', 'protein'],
-    [/^ENST\d{11}(?:\.\d+)?$/,          'Ensembl transcript', 'Ensembl', 'DNA (cDNA)'],
-    [/^ENSG\d{11}(?:\.\d+)?$/,          'Ensembl gene',       'Ensembl', null],
-    [new RegExp(`^${UNIPROT_RE}$`),     'UniProt',            'UniProt', 'protein'],
+  [/^(?:NP|XP)_\d+(?:\.\d+)?$/,       'RefSeq protein',     'NCBI',    'protein'],
+  [/^(?:NM|XM|NR|XR)_\d+(?:\.\d+)?$/, 'RefSeq RNA',         'NCBI',    'nucleotide'],
+  [/^ENSP\d{11}(?:\.\d+)?$/,          'Ensembl protein',    'Ensembl', 'protein'],
+  [/^ENST\d{11}(?:\.\d+)?$/,          'Ensembl transcript', 'Ensembl', 'nucleotide (cDNA)'],
+  [/^ENSG\d{11}(?:\.\d+)?$/,          'Ensembl gene',       'Ensembl', null],
+  [new RegExp(`^${UNIPROT_RE}$`),     'UniProt',            'UniProt', 'protein'],
 ];
 
 function detectAccession(text) {
-    const q = text.trim().toUpperCase();
-    for (const [re, kind, source, type] of ACCESSION_KINDS) {
-        if (re.test(q)) return { kind, source, type };
-    }
-    return null;
+  const q = text.trim().toUpperCase();
+  for (const [re, kind, source, type] of ACCESSION_KINDS) {
+    if (re.test(q)) return { kind, source, type };
+  }
+  return null;
 }
 
 function onQueryInput() {
-    const hint = document.getElementById('query-kind-hint');
-    const q = document.getElementById('fetch-gene').value.trim();
-    const acc = q ? detectAccession(q) : null;
-    if (acc) {
-        const how = acc.type
-            ? `fetched from ${acc.source} as ${acc.type}; the website and type below are ignored.`
-            : `fetched from ${acc.source} using the sequence type below; the website choice is ignored.`;
-        hint.innerHTML = `<span style="color:var(--accent); font-weight:600;">${acc.kind} accession</span>: ${how}`;
-    } else {
-        hint.textContent = 'Accepts RefSeq (NP_, NM_, XP_, XM_), UniProt (P04637, P04637-2) and Ensembl (ENSP, ENST, ENSG) IDs.';
-    }
+  const hint = $('query-kind-hint');
+  const badge = $('detect-badge');
+  const q = $('fetch-gene').value.trim();
+  const acc = q ? detectAccession(q) : null;
+  document.querySelectorAll('.source-card').forEach(c => c.classList.toggle('overridden', !!acc));
+  if (acc) {
+    const how = acc.type
+      ? `fetched from ${acc.source} as ${acc.type}. The database and type choices are ignored.`
+      : `fetched from ${acc.source} using the sequence type you choose. The database choice is ignored.`;
+    hint.innerHTML = `<b>${esc(acc.kind)} accession</b>, ${how}`;
+    badge.textContent = `${acc.kind} · ${acc.source}`;
+    badge.classList.add('acc');
+  } else {
+    hint.textContent = 'Accepts RefSeq (NP_, NM_, XP_, XM_), UniProt (P04637, P04637-2) and Ensembl (ENSP, ENST, ENSG) IDs.';
+    badge.textContent = q ? 'Gene symbol' : 'Symbol or accession';
+    badge.classList.remove('acc');
+  }
 }
 
 function selectSource(source) {
-    currentSource = source;
-    ['ncbi', 'uniprot', 'ensembl'].forEach(s => {
-        const card = document.getElementById(`card-${s}`);
-        const active = s === source;
-        card.classList.toggle('active', active);
-        card.querySelector('input').checked = active;
-    });
-
-    const uniprotHint = document.getElementById('uniprot-dna-hint');
-    if (source === 'uniprot') {
-        if (currentSeqType === 'dna') {
-            selectSeqType('protein');
-        }
-        uniprotHint.classList.remove('hidden');
-    } else {
-        uniprotHint.classList.add('hidden');
-    }
+  currentSource = source;
+  ['ncbi', 'uniprot', 'ensembl'].forEach(s => {
+    const card = $(`card-${s}`);
+    const active = s === source;
+    card.classList.toggle('active', active);
+    card.querySelector('input').checked = active;
+  });
+  const uniprotHint = $('uniprot-dna-hint');
+  if (source === 'uniprot') {
+    if (currentSeqType === 'dna') selectSeqType('protein');
+    $('uniprot-dna-text').textContent = 'UniProt stores protein sequences only. Choose NCBI or Ensembl to fetch nucleotide sequences.';
+    uniprotHint.classList.remove('hidden');
+  } else {
+    uniprotHint.classList.add('hidden');
+  }
 }
 
 function selectSeqType(type) {
-    if (currentSource === 'uniprot' && type === 'dna') {
-        alert('UniProt is a protein sequence database. Please select NCBI or Ensembl if you need DNA sequences.');
-        return;
-    }
-    currentSeqType = type;
-    document.getElementById('chip-type-protein').classList.toggle('checked', type === 'protein');
-    document.getElementById('chip-type-dna').classList.toggle('checked', type === 'dna');
-    document.getElementById('chip-type-protein').querySelector('input').checked = (type === 'protein');
-    document.getElementById('chip-type-dna').querySelector('input').checked = (type === 'dna');
+  if (currentSource === 'uniprot' && type === 'dna') {
+    $('uniprot-dna-text').textContent = 'UniProt is a protein database, so nucleotide fetching isn\'t available. Choose NCBI or Ensembl for nucleotide sequences.';
+    const h = $('uniprot-dna-hint');
+    h.classList.remove('hidden');
+    h.animate([{ transform: 'translateX(-3px)' }, { transform: 'translateX(3px)' }, { transform: 'none' }], { duration: 220 });
+    return;
+  }
+  currentSeqType = type;
+  $('chip-type-protein').setAttribute('aria-pressed', type === 'protein' ? 'true' : 'false');
+  $('chip-type-dna').setAttribute('aria-pressed', type === 'dna' ? 'true' : 'false');
 }
 
 function switchView(mode) {
-    currentViewMode = mode;
-    document.getElementById('tab-view-raw').classList.toggle('active', mode === 'raw');
-    document.getElementById('tab-view-fasta').classList.toggle('active', mode === 'fasta');
-    document.getElementById('seq-view-raw').classList.toggle('hidden', mode !== 'raw');
-    document.getElementById('seq-view-fasta').classList.toggle('hidden', mode !== 'fasta');
-}
-
-function showToast(msg) {
-    const toast = document.getElementById('copy-toast');
-    document.getElementById('toast-msg').textContent = msg;
-    toast.classList.add('visible');
-    setTimeout(() => {
-        toast.classList.remove('visible');
-    }, 2400);
-}
-
-async function copyTextToClipboard(text, successMsg) {
-    if (!text) return;
-    try {
-        if (navigator.clipboard && window.isSecureContext) {
-            await navigator.clipboard.writeText(text);
-        } else {
-            const ta = document.createElement('textarea');
-            ta.value = text;
-            ta.style.position = 'fixed';
-            ta.style.opacity = '0';
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            document.body.removeChild(ta);
-        }
-        showToast(successMsg);
-    } catch (err) {
-        showToast('Failed to copy');
-    }
+  currentViewMode = mode;
+  for (const m of ['fmt', 'raw', 'fasta']) {
+    $(`tab-view-${m}`).setAttribute('aria-selected', m === mode ? 'true' : 'false');
+    $(`seq-view-${m}`).classList.toggle('hidden', m !== mode);
+  }
+  $('seq-foot-text').textContent = mode === 'fmt' ? '60 residues per line, in blocks of 10'
+    : mode === 'raw' ? 'The sequence as one continuous string' : 'FASTA as returned by the server';
 }
 
 function copySequence() {
-    if (!fetchedData || !fetchedData.sequence) return;
-    copyTextToClipboard(fetchedData.sequence, '✓ Sequence copied to clipboard!');
+  if (!fetchedData || !fetchedData.sequence) return;
+  GS.copy(fetchedData.sequence, 'Sequence copied to clipboard');
 }
-
 function copyFasta() {
-    if (!fetchedData || !fetchedData.fasta) return;
-    copyTextToClipboard(fetchedData.fasta, '✓ FASTA format copied to clipboard!');
+  if (!fetchedData || !fetchedData.fasta) return;
+  GS.copy(fetchedData.fasta, 'FASTA copied to clipboard');
+}
+function downloadFasta() {
+  if (!fetchedData || !fetchedData.fasta) return;
+  const name = String(fetchedData.isoform_id || fetchedData.symbol || 'sequence').replace(/[^A-Za-z0-9._-]+/g, '_');
+  GS.download(`${name}.fasta`, fetchedData.fasta + '\n', 'text/plain');
 }
 
 function proceedToSearch() {
-    if (!fetchedData || !fetchedData.sequence) return;
-    // Store in sessionStorage so search page can retrieve it seamlessly
-    sessionStorage.setItem('genesim_query_seq', fetchedData.sequence);
-    sessionStorage.setItem('genesim_query_symbol', fetchedData.symbol);
-    sessionStorage.setItem('genesim_query_source', fetchedData.source);
-    sessionStorage.setItem('genesim_query_type', fetchedData.seq_type);
-    sessionStorage.setItem('genesim_query_isoform', fetchedData.isoform_id);
-    sessionStorage.setItem('genesim_query_source_url', fetchedData.source_url || '');
+  if (!fetchedData || !fetchedData.sequence) return;
+  // Store in sessionStorage so the search page can pick it up
+  sessionStorage.setItem('genesim_query_seq', fetchedData.sequence);
+  sessionStorage.setItem('genesim_query_symbol', fetchedData.symbol);
+  sessionStorage.setItem('genesim_query_source', fetchedData.source);
+  sessionStorage.setItem('genesim_query_type', fetchedData.seq_type);
+  sessionStorage.setItem('genesim_query_isoform', fetchedData.isoform_id);
+  sessionStorage.setItem('genesim_query_source_url', fetchedData.source_url || '');
+  window.location.href = '/?from=fetch';
+}
 
-    // Redirect to Search page
-    window.location.href = '/?from=fetch';
+function showFetchError(msg) {
+  $('fetch-error-text').textContent = msg;
+  $('fetch-error-box').classList.remove('hidden');
+  $('fetch-empty').classList.remove('hidden');
 }
 
 async function executeFetch() {
-    const gene = document.getElementById('fetch-gene').value.trim().toUpperCase();
-    if (!gene) {
-        alert('Please enter a gene symbol or an accession number.');
-        return;
+  const gene = $('fetch-gene').value.trim().toUpperCase();
+  const errorBox = $('fetch-error-box');
+  if (!gene) {
+    showFetchError('Enter a gene symbol or an accession number.');
+    $('fetch-gene').focus();
+    return;
+  }
+  const accession = detectAccession(gene);
+  const emptyState = $('fetch-empty');
+  const resultContent = $('fetch-result-content');
+  const fetchBtn = $('fetch-btn');
+
+  errorBox.classList.add('hidden');
+  emptyState.classList.add('hidden');
+  resultContent.classList.add('hidden');
+  fetchBtn.disabled = true;
+
+  const fromLabel = accession ? accession.source : SOURCE_NAMES[currentSource];
+  GS.showDNA(`Fetching ${gene}`, `Retrieving the ${accession && accession.type ? accession.type : (currentSeqType === 'dna' ? 'nucleotide' : 'protein')} sequence from ${fromLabel}`, {
+    hints: [{ after: 10000, text: 'Ensembl can take 10 to 40 seconds at busy times.' }]
+  });
+
+  try {
+    const resp = await fetch('/api/fetch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: gene, source: currentSource, seq_type: currentSeqType })
+    });
+    const data = await resp.json();
+    GS.hideDNA();
+    if (!resp.ok) {
+      showFetchError(data.error || 'The sequence couldn\'t be fetched.');
+      return;
     }
-    const accession = detectAccession(gene);
+    fetchedData = data;
+    renderFetchedResult(data);
+  } catch (e) {
+    GS.hideDNA();
+    showFetchError(`Network error: ${e.message}`);
+  } finally {
+    fetchBtn.disabled = false;
+  }
+}
 
-    const errorBox = document.getElementById('fetch-error-box');
-    const emptyState = document.getElementById('fetch-empty');
-    const resultContent = document.getElementById('fetch-result-content');
-    const fetchBtn = document.getElementById('fetch-btn');
+/* ---------- Rendering ---------- */
+const AA_CLASS = {};
+'AILMFWV'.split('').forEach(c => AA_CLASS[c] = 'r-hyd');
+'KR'.split('').forEach(c => AA_CLASS[c] = 'r-pos');
+'DE'.split('').forEach(c => AA_CLASS[c] = 'r-neg');
+'NQST'.split('').forEach(c => AA_CLASS[c] = 'r-pol');
+AA_CLASS.C = 'r-cys'; AA_CLASS.G = 'r-gly'; AA_CLASS.P = 'r-pro'; AA_CLASS.H = 'r-aro'; AA_CLASS.Y = 'r-aro';
+const NT_CLASS = { A: 'n-a', C: 'n-c', G: 'n-g', T: 'n-t', N: 'n-n', U: 'n-t' };
 
-    errorBox.classList.add('hidden');
-    emptyState.classList.add('hidden');
-    resultContent.classList.add('hidden');
-    fetchBtn.disabled = true;
+function colorRun(str, isDna) {
+  let html = '', run = '', cls = null;
+  for (const ch of str) {
+    const c = isDna ? (NT_CLASS[ch] || '') : (AA_CLASS[ch] || '');
+    if (c !== cls) { if (run) html += cls ? `<span class="${cls}">${esc(run)}</span>` : esc(run); run = ''; cls = c; }
+    run += ch;
+  }
+  if (run) html += cls ? `<span class="${cls}">${esc(run)}</span>` : esc(run);
+  return html;
+}
 
-    const fromLabel = accession ? accession.source : currentSource.toUpperCase();
-    showDNA(`Fetching ${gene} from ${fromLabel}...`, 'Retrieving sequence data');
-
-    try {
-        const resp = await fetch('/api/fetch', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                query: gene,
-                source: currentSource,
-                seq_type: currentSeqType
-            })
-        });
-
-        const data = await resp.json();
-        hideDNA();
-
-        if (!resp.ok) {
-            errorBox.textContent = `❌ ${data.error || 'Failed to fetch sequence.'}`;
-            errorBox.classList.remove('hidden');
-            return;
-        }
-
-        fetchedData = data;
-        renderFetchedResult(data);
-
-    } catch (e) {
-        hideDNA();
-        errorBox.textContent = `❌ Network error: ${e.message}`;
-        errorBox.classList.remove('hidden');
-    } finally {
-        fetchBtn.disabled = false;
+function formattedHTML(seq, isDna) {
+  const s = seq.toUpperCase();
+  if (s.length > 200000) return `<div class="hint">This sequence is ${s.length.toLocaleString('en-US')} long. Use the plain or FASTA view to see all of it.</div>`;
+  let pos = '', lines = '';
+  for (let i = 0; i < s.length; i += 60) {
+    pos += `${i + 1}\n`;
+    let line = '';
+    for (let j = i; j < Math.min(i + 60, s.length); j += 10) {
+      line += `<span class="blk">${colorRun(s.slice(j, Math.min(j + 10, i + 60, s.length)), isDna)}</span>`;
     }
+    lines += line + '\n';
+  }
+  return `<div class="seq-fmt"><div class="pos">${pos}</div><div class="ln">${lines}</div></div>`;
+}
+
+const AA_MASS = { A: 71.0788, R: 156.1875, N: 114.1038, D: 115.0886, C: 103.1388, E: 129.1155, Q: 128.1307, G: 57.0519, H: 137.1411, I: 113.1594,
+  L: 113.1594, K: 128.1741, M: 131.1926, F: 147.1766, P: 97.1167, S: 87.0782, T: 101.1051, W: 186.2132, Y: 163.1760, V: 99.1326 };
+
+function compositionHTML(seq, isDna) {
+  const s = seq.toUpperCase();
+  const n = Math.max(1, s.length);
+  const count = (re) => (s.match(re) || []).length;
+  let rows;
+  if (isDna) {
+    rows = [['Adenine (A)', count(/A/g)], ['Cytosine (C)', count(/C/g)], ['Guanine (G)', count(/G/g)], ['Thymine (T)', count(/[TU]/g)]];
+    const nN = count(/N/g); if (nN) rows.push(['Unknown (N)', nN]);
+  } else {
+    rows = [['Hydrophobic', count(/[AILMFWV]/g)], ['Polar', count(/[NQST]/g)], ['Positive', count(/[KR]/g)], ['Negative', count(/[DE]/g)],
+            ['Aromatic, H and Y', count(/[HY]/g)], ['Special, C G P', count(/[CGP]/g)]];
+  }
+  const max = Math.max(...rows.map(r => r[1]), 1);
+  return rows.map(([lab, c]) => `<div class="comp-row" title="${c.toLocaleString('en-US')} of ${n.toLocaleString('en-US')}">
+    <span class="lab">${lab}</span><span class="bar"><i style="width:${(c / max) * 100}%"></i></span><span class="val">${(100 * c / n).toFixed(1)}%</span></div>`).join('');
 }
 
 function renderFetchedResult(data) {
-    // An accession may have decided the website and type: keep the controls in sync
-    if (data.source_key && data.source_key !== currentSource) selectSource(data.source_key);
-    if (data.seq_type && data.seq_type !== currentSeqType) selectSeqType(data.seq_type);
+  // An accession may have decided the database and type: keep the controls in sync
+  if (data.source_key && data.source_key !== currentSource) selectSource(data.source_key);
+  if (data.seq_type && data.seq_type !== currentSeqType) selectSeqType(data.seq_type);
 
-    const note = document.getElementById('fetch-note');
-    note.textContent = data.note ? `ℹ ${data.note}` : '';
-    note.classList.toggle('hidden', !data.note);
+  $('fetch-note-text').textContent = data.note || '';
+  $('fetch-note').classList.toggle('hidden', !data.note);
 
-    const isDna = data.seq_type === 'dna';
-    const unit = isDna ? 'bp' : 'aa';
-    const typeLabel = isDna ? 'DNA (mRNA)' : 'Protein';
-    const sourceUrl = data.source_url || '#';
+  const isDna = data.seq_type === 'dna';
+  const unit = isDna ? 'bp' : 'aa';
+  const typeLabel = isDna ? 'Nucleotide (mRNA)' : 'Protein';
+  const seq = String(data.sequence || '');
 
-    document.getElementById('fetch-stats').innerHTML = `
-        <div class="stat-chip">
-            <div class="stat-val gene-badge" style="font-size:18px;">${data.symbol}</div>
-            <div class="stat-label">Gene Symbol</div>
-        </div>
-        <div class="stat-chip">
-            <div class="stat-val text-mono text-sm" style="font-size:14px; margin-top:2px;">
-                ${data.source_url ? `
-                    <a href="${sourceUrl}" target="_blank" rel="noopener noreferrer"
-                       style="color:var(--accent); text-decoration:none;"
-                       title="Click to view original on ${data.source}">
-                        ${data.isoform_id} ↗
-                    </a>` : data.isoform_id}
-            </div>
-            <div class="stat-label">Accession / Isoform</div>
-        </div>
-        <div class="stat-chip">
-            <div class="stat-val" style="font-size:16px;">
-                ${data.source_url ? `
-                    <a href="${sourceUrl}" target="_blank" rel="noopener noreferrer"
-                       style="color:var(--accent); text-decoration:none;"
-                       title="Click to view original on ${data.source}">
-                        ${data.source} ↗
-                    </a>` : data.source}
-            </div>
-            <div class="stat-label">Source Database (Click to view)</div>
-        </div>
-        <div class="stat-chip">
-            <div class="stat-val" style="font-size:16px;">${typeLabel}</div>
-            <div class="stat-label">Type</div>
-        </div>
-        <div class="stat-chip">
-            <div class="stat-val text-mono" style="font-size:18px; color:var(--accent);">${data.length.toLocaleString()} <span style="font-size:12px; font-weight:normal;">${unit}</span></div>
-            <div class="stat-label">Length</div>
-        </div>
-    `;
+  // Header
+  const kicker = [`<span class="tag tag-dot" style="color:var(--info)">${esc(data.source)}</span>`,
+                  `<span class="tag">${typeLabel}</span>`];
+  if (data.query_kind === 'accession' && data.accession_kind) kicker.push(`<span class="tag">${esc(data.accession_kind)} accession</span>`);
+  if (data.organism) kicker.push(`<span class="tag" style="font-style:italic">${esc(data.organism)}</span>`);
+  $('record-kicker').innerHTML = kicker.join('');
+  $('record-symbol').textContent = data.symbol;
+  const accLink = $('record-acc');
+  accLink.innerHTML = `${esc(data.isoform_id)}${data.source_url ? '<svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"/></svg>' : ''}`;
+  if (data.source_url) { accLink.href = data.source_url; accLink.title = `View the original on ${data.source}`; }
+  else { accLink.removeAttribute('href'); }
 
-    document.getElementById('fetch-desc-text').textContent = data.description || `${data.symbol} (${data.source})`;
-    document.getElementById('char-count-badge').textContent = `${data.length.toLocaleString()} ${unit}`;
+  // Facts
+  let extraK = '', extraV = '';
+  if (isDna) {
+    const acgt = seq.toUpperCase().replace(/[^ACGTU]/g, '');
+    const gc = (acgt.match(/[GC]/g) || []).length / Math.max(1, acgt.length);
+    extraK = 'GC content'; extraV = `${(gc * 100).toFixed(1)}<small>%</small>`;
+  } else {
+    let mw = 18.015;
+    for (const ch of seq.toUpperCase()) mw += AA_MASS[ch] || 110;
+    extraK = 'Molecular weight'; extraV = `${(mw / 1000).toFixed(1)}<small>kDa, approx.</small>`;
+  }
+  const linkOr = (text) => data.source_url
+    ? `<a href="${esc(data.source_url)}" target="_blank" rel="noopener noreferrer" title="View the original on ${esc(data.source)}">${esc(text)}</a>` : esc(text);
+  $('fetch-stats').innerHTML = [
+    ['Gene symbol', esc(data.symbol)],
+    ['Accession or isoform', `<span class="mono" style="font-size:15px">${linkOr(data.isoform_id)}</span>`],
+    ['Source database', linkOr(data.source)],
+    ['Type', typeLabel],
+    ['Length', `${Number(data.length).toLocaleString('en-US')}<small>${unit}</small>`],
+    [extraK, extraV],
+  ].map(([k, v]) => `<div class="fact"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
 
-    // Update view source buttons
-    const btnSource = document.getElementById('btn-view-source');
-    const linkDesc = document.getElementById('desc-source-link');
-    if (data.source_url) {
-        btnSource.href = data.source_url;
-        btnSource.innerHTML = `🌐 View on ${data.source} ↗`;
-        btnSource.classList.remove('hidden');
+  // Description and links
+  $('fetch-desc-text').textContent = data.description || `${data.symbol} (${data.source})`;
+  $('char-count-badge').textContent = `${Number(data.length).toLocaleString('en-US')} ${unit}`;
+  const btnSource = $('btn-view-source');
+  const linkDesc = $('desc-source-link');
+  if (data.source_url) {
+    btnSource.href = data.source_url;
+    $('btn-view-source-label').textContent = `View on ${data.source}`;
+    btnSource.classList.remove('hidden');
+    linkDesc.href = data.source_url;
+    linkDesc.textContent = `Open on ${data.source}`;
+    linkDesc.classList.remove('hidden');
+  } else {
+    btnSource.classList.add('hidden');
+    linkDesc.classList.add('hidden');
+  }
 
-        linkDesc.href = data.source_url;
-        linkDesc.innerHTML = `🌐 View original entry on ${data.source} ↗`;
-        linkDesc.classList.remove('hidden');
-    } else {
-        btnSource.classList.add('hidden');
-        linkDesc.classList.add('hidden');
-    }
+  // Sequence views
+  $('seq-view-fmt').innerHTML = formattedHTML(seq, isDna);
+  $('seq-view-raw').textContent = seq;
+  $('seq-view-fasta').textContent = data.fasta;
 
-    // Plain sequence
-    document.getElementById('seq-view-raw').textContent = data.sequence;
+  // Composition
+  $('comp-title').textContent = isDna ? 'Base composition' : 'Residue composition';
+  $('comp-sub').textContent = isDna ? 'Share of bases' : 'By chemical class';
+  $('comp-list').innerHTML = compositionHTML(seq, isDna);
 
-    // FASTA format
-    document.getElementById('seq-view-fasta').textContent = data.fasta;
+  $('cta-text').innerHTML = `Compare ${esc(data.symbol)} against 20,000 human genes. It opens in the ${isDna ? 'Nucleotide' : 'Protein'} tab with <span class="mono">&gt;${esc(data.symbol)}</span> as the header, so motif scoring can find its promoter.`;
 
-    document.getElementById('fetch-result-content').classList.remove('hidden');
+  $('fetch-result-content').classList.remove('hidden');
+  $('fetch-empty').classList.add('hidden');
 }
+
+/* ---------- Wiring ---------- */
+$('color-toggle').addEventListener('change', (e) => $('seq-view-fmt').classList.toggle('colored', e.target.checked));
+document.querySelectorAll('.source-card input').forEach(input => {
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectSource(input.value); } });
+  input.addEventListener('change', () => selectSource(input.value));
+});
+onQueryInput();
+switchView('fmt');
 </script>
 {% endblock %}
-

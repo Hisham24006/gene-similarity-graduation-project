@@ -1,79 +1,640 @@
 {% extends "base.html" %}
-{% block title %}Visualizations — GeneSim{% endblock %}
-{% block page_title %}Visualizations{% endblock %}
-{% block page_sub %}Charts generated from your last similarity search and benchmarks{% endblock %}
+{% block title %}Visualizations · GeneSim{% endblock %}
+{% block body_class %}page-visualize{% endblock %}
+
+{% block head %}
+<style>
+.hero { padding: 40px 0 26px; }
+.hero-inner { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; }
+.hero .page-title { font-size: 38px; }
+.hero .page-sub { font-size: 15.5px; max-width: 64ch; }
+.jump { display: flex; gap: 6px; flex-shrink: 0; }
+
+.section { margin-bottom: 34px; scroll-margin-top: calc(var(--topbar-h) + 16px); }
+.section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 14px; flex-wrap: wrap; }
+.section-title { font-family: var(--font-serif); font-size: 24px; font-weight: 500; letter-spacing: -.01em; color: var(--ink); }
+.section-sub { font-size: 13.5px; color: var(--ink-3); margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.section-sub .tag { height: 22px; }
+.metric-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-2); }
+.metric-legend span { display: inline-flex; align-items: center; gap: 7px; }
+.metric-legend i { width: 10px; height: 10px; border-radius: 3px; background: var(--c); }
+
+.grid-2 { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 18px; }
+.grid-2 + .grid-2 { margin-top: 18px; }
+.chart-panel { overflow: hidden; min-width: 0; }
+.chart-panel .panel-head { align-items: flex-start; }
+.chart-panel .panel-body { padding: 14px 20px 18px; }
+.chart svg { width: 100%; height: auto; overflow: visible; display: block; }
+.chart text { font-family: var(--font-sans); }
+.chart .axis-label { fill: var(--ink-3); font-size: 11px; }
+.chart .axis-title { fill: var(--ink-3); font-size: 11.5px; }
+.chart .row-label { fill: var(--ink); font-size: 12.5px; font-weight: 500; }
+.chart .row-sub { fill: var(--ink-4); font-size: 10.5px; font-family: var(--font-mono); }
+.chart .val-label { fill: var(--ink-2); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.chart .grid { stroke: #E8ECF2; stroke-width: 1; }
+.chart .zero { stroke: #B9C2D0; stroke-width: 1; }
+.chart .hit { fill: transparent; }
+.chart .hit:hover { fill: rgba(13,22,48,.035); }
+.chart .cell-label { font-size: 11.5px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; pointer-events: none; }
+.chart .pt { cursor: default; transition: r .12s; }
+.chart .pt:hover { r: 8; }
+.view-toggle .segmented button { height: 28px; font-size: 12.5px; padding: 0 10px; }
+.scatter-head { flex-wrap: wrap; }
+.scatter-ctrl { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--ink-3); flex-wrap: nowrap; }
+.scatter-ctrl .select { height: 32px; width: auto; font-size: 12.5px; padding-right: 30px; }
+.chart-note { font-size: 12.5px; color: var(--ink-3); line-height: 1.55; padding: 12px 20px; border-top: 1px solid var(--line); background: var(--surface-sunk); }
+.chart-empty { padding: 34px 20px; text-align: center; font-size: 13px; color: var(--ink-3); }
+
+table.data { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.data th { text-align: right; font-size: 12px; font-weight: 500; color: var(--ink-3); padding: 0 12px; height: 36px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.data th:first-child, table.data td:first-child { text-align: left; padding-left: 0; }
+table.data td { text-align: right; padding: 0 12px; height: 38px; border-bottom: 1px solid var(--line); font-family: var(--font-mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+table.data td:first-child { font-family: var(--font-sans); font-weight: 600; color: var(--ink); font-size: 13px; }
+table.data tr:last-child td { border-bottom: 0; }
+
+.tooltip { position: fixed; z-index: 300; pointer-events: none; background: var(--ink); color: #fff; border-radius: 10px; padding: 10px 12px; font-size: 12px; line-height: 1.5; box-shadow: var(--shadow-3); opacity: 0; transform: translateY(4px); transition: opacity .12s, transform .12s; min-width: 170px; }
+.tooltip.show { opacity: 1; transform: none; }
+.tooltip .tt-h { font-weight: 600; font-size: 12.5px; margin-bottom: 4px; display: flex; gap: 8px; align-items: baseline; }
+.tooltip .tt-h small { font-family: var(--font-mono); font-weight: 400; color: rgba(255,255,255,.6); font-size: 11px; }
+.tooltip .tt-r { display: flex; justify-content: space-between; gap: 18px; color: rgba(255,255,255,.75); align-items: center; }
+.tooltip .tt-r span { display: inline-flex; gap: 7px; align-items: center; }
+.tooltip .tt-r i { width: 8px; height: 8px; border-radius: 2px; background: var(--c); }
+.tooltip .tt-r b { color: #fff; font-weight: 500; font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+
+.invite { border: 1px dashed var(--line-2); border-radius: var(--r-lg); padding: 24px 26px; display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; }
+.invite b { display: block; font-size: 15px; color: var(--ink); }
+.invite span { font-size: 13.5px; color: var(--ink-3); }
+
+/* Server figures */
+.figures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.figure { overflow: hidden; display: flex; flex-direction: column; margin: 0; }
+.figure.wide { grid-column: 1 / -1; }
+.figure-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 16px 18px 12px 20px; }
+.figure-no { font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.figure-title { font-size: 15px; font-weight: 600; color: var(--ink); margin-top: 2px; }
+.figure-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.figure-img { margin: 0 20px; border: 1px solid var(--line); border-radius: var(--r-md); background: #fff; cursor: zoom-in; overflow: hidden; display: block; padding: 0; }
+.figure-img img { width: 100%; height: auto; display: block; }
+.figure-img:focus-visible { outline: none; box-shadow: var(--focus); }
+figcaption { padding: 12px 20px 18px; font-size: 13px; color: var(--ink-3); line-height: 1.6; }
+figcaption strong { color: var(--ink-2); font-weight: 600; }
+
+.lightbox { position: fixed; inset: 0; z-index: 400; background: rgba(13,22,48,.72); display: grid; place-items: center; padding: 32px; opacity: 0; visibility: hidden; transition: opacity .2s, visibility 0s linear .2s; }
+.lightbox.open { opacity: 1; visibility: visible; transition: opacity .2s; }
+.lightbox img { max-width: min(1400px, 100%); max-height: calc(100vh - 120px); border-radius: 12px; background: #fff; box-shadow: var(--shadow-3); }
+.lightbox .lb-bar { position: absolute; top: 18px; right: 18px; display: flex; gap: 8px; }
+.lightbox .lb-cap { position: absolute; bottom: 18px; left: 0; right: 0; text-align: center; color: rgba(255,255,255,.85); font-size: 13px; }
+
+.empty-all { border: 1px dashed var(--line-2); border-radius: var(--r-lg); padding: 48px 32px; display: grid; justify-items: start; gap: 12px; max-width: 760px; }
+.empty-all h3 { font-family: var(--font-serif); font-size: 24px; font-weight: 500; color: var(--ink); }
+.empty-all p { font-size: 14px; color: var(--ink-3); line-height: 1.6; max-width: 62ch; }
+.empty-all .row { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+
+@media (max-width: 1080px) {
+  .grid-2, .figures { grid-template-columns: 1fr; }
+  .hero-inner { flex-direction: column; align-items: flex-start; }
+}
+@media (max-width: 640px) { .hero .page-title { font-size: 30px; } }
+</style>
+{% endblock %}
+
+{% block page_header %}
+<section class="hero">
+  <div class="wrap hero-inner">
+    <div>
+      <h1 class="page-title">Visualizations</h1>
+      <p class="page-sub">Interactive charts from your latest similarity search and benchmark, alongside the figures the server generates. Hover any mark for exact values.</p>
+    </div>
+    <nav class="jump" aria-label="Sections on this page">
+      <a class="btn btn-secondary btn-sm hidden" href="#sec-search" id="jump-search">Latest search</a>
+      <a class="btn btn-secondary btn-sm hidden" href="#sec-bench" id="jump-bench">Benchmark</a>
+      {% if charts %}<a class="btn btn-secondary btn-sm" href="#sec-figures">Server figures</a>{% endif %}
+    </nav>
+  </div>
+</section>
+{% endblock %}
 
 {% block content %}
 
-{% if not charts %}
-<div class="card" style="text-align:center; padding:64px 24px;">
-    <div style="font-size:52px; margin-bottom:18px">📊</div>
-    <div style="font-size:17px; font-weight:600; margin-bottom:8px">No charts yet</div>
-    <div class="text-muted" style="font-size:13px; margin-bottom:24px; line-height:1.6">
-        Run a similarity search first to generate bar charts and heatmaps.
-    </div>
-    <a href="/" class="btn btn-primary">Go to Search →</a>
+<!-- Shown only when there is nothing at all to display -->
+<div class="empty-all hidden" id="empty-all">
+  <h3>No charts yet</h3>
+  <p>Run a similarity search to see how the top matches score on each metric, how the metrics agree, and the bar chart the server draws. Run a benchmark to compare metric speed and agreement.</p>
+  <div class="row">
+    <a href="/search" class="btn btn-primary">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>Go to search
+    </a>
+    <a href="/benchmark" class="btn btn-secondary">Run a benchmark</a>
+  </div>
 </div>
 
-{% else %}
-
-{% if charts.bar %}
-<div class="card">
-    <div class="card-title">Top Results — All Metrics</div>
-    <div class="text-muted text-sm" style="margin-bottom:16px; line-height:1.6">
-        Grouped bar chart showing BLOSUM62, K-mer, Edit distance, and Motif scores for the top matches from your last search.
+<!-- ======================= Latest search (interactive) ======================= -->
+<section class="section hidden" id="sec-search">
+  <div class="section-head">
+    <div>
+      <h2 class="section-title" id="ls-title">Latest search</h2>
+      <div class="section-sub" id="ls-sub"></div>
     </div>
-    <img src="data:image/png;base64,{{ charts.bar }}" style="width:100%; border-radius:8px; border:1px solid var(--border-light);">
-</div>
+    <div class="metric-legend" id="ls-legend"></div>
+  </div>
+
+  <div class="grid-2">
+    <div class="panel chart-panel">
+      <div class="panel-head">
+        <div><div class="panel-title">Scores of the top matches</div><div class="panel-sub">Every metric that ran, 0 to 1, query gene left out</div></div>
+        <div class="view-toggle"><div class="segmented" role="group" aria-label="Score view">
+          <button aria-pressed="true" id="bars-view-chart" onclick="setBarsView('chart')">Chart</button>
+          <button aria-pressed="false" id="bars-view-table" onclick="setBarsView('table')">Table</button>
+        </div></div>
+      </div>
+      <div class="panel-body chart" id="bars-chart"></div>
+    </div>
+    <div class="panel chart-panel">
+      <div class="panel-head">
+        <div><div class="panel-title">Score heatmap</div><div class="panel-sub">Darker cells score higher; each metric uses its own column</div></div>
+      </div>
+      <div class="panel-body chart" id="heat-chart"></div>
+      <div class="chart-note">Metrics use different scales, so compare cells down a column rather than across a row.</div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="panel chart-panel">
+      <div class="panel-head scatter-head">
+        <div><div class="panel-title">Metric agreement</div><div class="panel-sub">Each dot is one match; the dashed line is perfect agreement</div></div>
+        <div class="scatter-ctrl" id="scatter-ctrl">
+          <select class="select" id="sx" aria-label="Horizontal axis metric"></select>
+          <span>against</span>
+          <select class="select" id="sy" aria-label="Vertical axis metric"></select>
+        </div>
+      </div>
+      <div class="panel-body chart" id="scatter-chart"></div>
+    </div>
+    <div class="panel chart-panel">
+      <div class="panel-head"><div><div class="panel-title">Reading these charts</div></div></div>
+      <div class="panel-body" style="display:grid; gap:14px; font-size:13.5px; color:var(--ink-2); line-height:1.65;">
+        <p><strong style="color:var(--ink)">Alignment</strong> rewards conserved regions and is the most biologically faithful sequence metric.</p>
+        <p><strong style="color:var(--ink)">K-mer</strong> counts shared short words. Its values run lower than alignment's, but its ranking often agrees.</p>
+        <p><strong style="color:var(--ink)">Edit distance</strong> penalises every insertion, deletion and substitution, so length differences pull it down.</p>
+        <p><strong style="color:var(--ink)">Motif</strong> compares promoter regulation, not the sequence itself. A match that scores high here but low on alignment may be co-regulated rather than related in sequence.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= Latest benchmark (interactive) ======================= -->
+<section class="section hidden" id="sec-bench">
+  <div class="section-head">
+    <div>
+      <h2 class="section-title">Latest benchmark</h2>
+      <div class="section-sub" id="lb-sub"></div>
+    </div>
+    <a class="btn btn-secondary btn-sm" href="/benchmark">Open benchmark</a>
+  </div>
+  <div class="grid-2">
+    <div class="panel chart-panel">
+      <div class="panel-head"><div><div class="panel-title">Time per comparison</div><div class="panel-sub">Average with min to max range, log scale</div></div></div>
+      <div class="panel-body chart" id="speed-chart"></div>
+    </div>
+    <div class="panel chart-panel">
+      <div class="panel-head"><div><div class="panel-title">Agreement with BLOSUM62</div><div class="panel-sub">Pearson r across the tested pairs</div></div></div>
+      <div class="panel-body chart" id="corr-chart"></div>
+    </div>
+  </div>
+</section>
+<section class="section hidden" id="bench-invite">
+  <div class="invite">
+    <div><b>No benchmark in this browser yet</b><span>Run one to compare how fast each metric is and how closely it agrees with BLOSUM62.</span></div>
+    <a class="btn btn-secondary" href="/benchmark">Run a benchmark</a>
+  </div>
+</section>
+
+<!-- ======================= Server-generated figures ======================= -->
+{% if charts %}
+{% set ns = namespace(n=0) %}
+<section class="section" id="sec-figures">
+  <div class="section-head">
+    <div>
+      <h2 class="section-title">Server figures</h2>
+      <div class="section-sub">Images generated by GeneSim with Matplotlib. Click a figure to enlarge it.</div>
+    </div>
+  </div>
+  <div class="figures">
+
+    {% if charts.bar %}{% set ns.n = ns.n + 1 %}
+    <figure class="panel figure wide">
+      <div class="figure-head">
+        <div><div class="figure-no">Figure {{ ns.n }}</div><div class="figure-title">Top results across all metrics</div></div>
+        <div class="figure-actions"><a class="btn btn-ghost btn-sm" download="genesim_top_results.png" href="data:image/png;base64,{{ charts.bar }}">Download PNG</a></div>
+      </div>
+      <button class="figure-img" onclick="openLightbox(this)" data-caption="Figure {{ ns.n }}. Top results across all metrics"><img src="data:image/png;base64,{{ charts.bar }}" alt="Grouped bar chart of BLOSUM62, k-mer, edit distance and motif scores for the top matches from the last search"></button>
+      <figcaption>Grouped bars compare <strong>BLOSUM62, k-mer, edit distance and motif</strong> scores for the top matches of your last search, leaving out the query itself. The server draws it in the background after each search, so refresh this page if it still shows an earlier query.</figcaption>
+    </figure>
+    {% endif %}
+
+    {% if charts.kmer %}{% set ns.n = ns.n + 1 %}
+    <figure class="panel figure">
+      <div class="figure-head">
+        <div><div class="figure-no">Figure {{ ns.n }}</div><div class="figure-title">K-mer similarity heatmap</div></div>
+        <div class="figure-actions"><a class="btn btn-ghost btn-sm" download="genesim_heatmap_kmer.png" href="data:image/png;base64,{{ charts.kmer }}">Download PNG</a></div>
+      </div>
+      <button class="figure-img" onclick="openLightbox(this)" data-caption="Figure {{ ns.n }}. K-mer similarity heatmap"><img src="data:image/png;base64,{{ charts.kmer }}" alt="Heatmap of k-mer similarity between database genes"></button>
+      <figcaption>Jaccard similarity of shared 3-mers between every pair of genes in the matrix.</figcaption>
+    </figure>
+    {% endif %}
+
+    {% if charts.edit %}{% set ns.n = ns.n + 1 %}
+    <figure class="panel figure">
+      <div class="figure-head">
+        <div><div class="figure-no">Figure {{ ns.n }}</div><div class="figure-title">Edit distance heatmap</div></div>
+        <div class="figure-actions"><a class="btn btn-ghost btn-sm" download="genesim_heatmap_edit.png" href="data:image/png;base64,{{ charts.edit }}">Download PNG</a></div>
+      </div>
+      <button class="figure-img" onclick="openLightbox(this)" data-caption="Figure {{ ns.n }}. Edit distance heatmap"><img src="data:image/png;base64,{{ charts.edit }}" alt="Heatmap of normalised edit distance similarity between database genes"></button>
+      <figcaption>Normalised Levenshtein similarity between every pair of genes in the matrix.</figcaption>
+    </figure>
+    {% endif %}
+
+    {% if charts.motif %}{% set ns.n = ns.n + 1 %}
+    <figure class="panel figure wide">
+      <div class="figure-head">
+        <div><div class="figure-no">Figure {{ ns.n }}</div><div class="figure-title">Motif (JASPAR) similarity heatmap</div></div>
+        <div class="figure-actions"><a class="btn btn-ghost btn-sm" download="genesim_heatmap_motif.png" href="data:image/png;base64,{{ charts.motif }}">Download PNG</a></div>
+      </div>
+      <button class="figure-img" onclick="openLightbox(this)" data-caption="Figure {{ ns.n }}. Motif (JASPAR) similarity heatmap"><img src="data:image/png;base64,{{ charts.motif }}" alt="Heatmap of shared transcription factor binding sites between gene promoters"></button>
+      <figcaption>Jaccard similarity of shared transcription factor binding sites in gene promoters. It reveals <strong>functional similarity</strong> beyond sequence: genes sharing the same regulatory programmes score high here even when their sequences differ.</figcaption>
+    </figure>
+    {% endif %}
+
+    {% if charts.speed %}{% set ns.n = ns.n + 1 %}
+    <figure class="panel figure">
+      <div class="figure-head">
+        <div><div class="figure-no">Figure {{ ns.n }}</div><div class="figure-title">Benchmark, speed per comparison</div></div>
+        <div class="figure-actions"><a class="btn btn-ghost btn-sm" download="genesim_benchmark_speed.png" href="data:image/png;base64,{{ charts.speed }}">Download PNG</a></div>
+      </div>
+      <button class="figure-img" onclick="openLightbox(this)" data-caption="Figure {{ ns.n }}. Benchmark, speed per comparison"><img src="data:image/png;base64,{{ charts.speed }}" alt="Log-scale bar chart of average time per comparison for each metric"></button>
+      <figcaption>Log-scale bars from the command-line benchmarker. K-mer and motif are orders of magnitude faster than BLOSUM62.</figcaption>
+    </figure>
+    {% endif %}
+
+    {% if charts.agreement %}{% set ns.n = ns.n + 1 %}
+    <figure class="panel figure">
+      <div class="figure-head">
+        <div><div class="figure-no">Figure {{ ns.n }}</div><div class="figure-title">Benchmark, agreement with BLOSUM62</div></div>
+        <div class="figure-actions"><a class="btn btn-ghost btn-sm" download="genesim_benchmark_agreement.png" href="data:image/png;base64,{{ charts.agreement }}">Download PNG</a></div>
+      </div>
+      <button class="figure-img" onclick="openLightbox(this)" data-caption="Figure {{ ns.n }}. Benchmark, agreement with BLOSUM62"><img src="data:image/png;base64,{{ charts.agreement }}" alt="Pearson correlation of each metric against BLOSUM62"></button>
+      <figcaption>Pearson correlation of each metric against BLOSUM62 across random gene pairs, from the command-line benchmarker.</figcaption>
+    </figure>
+    {% endif %}
+  </div>
+</section>
 {% endif %}
 
-<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-    {% if charts.kmer %}
-    <div class="card">
-        <div class="card-title">K-mer Similarity Heatmap</div>
-        <div class="text-muted text-sm" style="margin-bottom:12px">60×60 matrix — Jaccard similarity of shared 3-mers between all genes.</div>
-        <img src="data:image/png;base64,{{ charts.kmer }}" style="width:100%; border-radius:8px; border:1px solid var(--border-light);">
-    </div>
-    {% endif %}
-
-    {% if charts.edit %}
-    <div class="card">
-        <div class="card-title">Edit Distance Heatmap</div>
-        <div class="text-muted text-sm" style="margin-bottom:12px">60×60 matrix — normalized Levenshtein distance similarity between all genes.</div>
-        <img src="data:image/png;base64,{{ charts.edit }}" style="width:100%; border-radius:8px; border:1px solid var(--border-light);">
-    </div>
-    {% endif %}
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Enlarged figure" onclick="if(event.target===this) closeLightbox()">
+  <div class="lb-bar">
+    <a class="btn btn-secondary btn-sm" id="lb-download" download="genesim_figure.png" href="#">Download PNG</a>
+    <button class="btn btn-secondary btn-sm" onclick="closeLightbox()">Close</button>
+  </div>
+  <img id="lb-img" alt="">
+  <div class="lb-cap" id="lb-cap"></div>
 </div>
+<div class="tooltip" id="tooltip" role="tooltip"></div>
+{% endblock %}
 
-{% if charts.motif %}
-<div class="card">
-    <div class="card-title">Motif (JASPAR) Similarity Heatmap</div>
-    <div class="text-muted text-sm" style="margin-bottom:12px; line-height:1.6">
-        Jaccard similarity of shared transcription factor binding sites in gene promoter regions.
-        This reveals <strong>functional similarity</strong> beyond what sequence alone captures — genes sharing the same regulatory programs score high here even if their sequences differ.
-    </div>
-    <img src="data:image/png;base64,{{ charts.motif }}" style="width:100%; border-radius:8px; border:1px solid var(--border-light);">
-</div>
-{% endif %}
+{% block scripts %}
+<script>
+const HAS_SERVER_CHARTS = {{ 'true' if charts else 'false' }};
+const $ = (id) => document.getElementById(id);
+const esc = GS.escape;
+const ORDER = ['blosum', 'kmer', 'edit', 'motif'];
+const COLOR = { blosum: '#5A4BDB', kmer: '#0A9384', edit: '#E0512F', motif: '#D69E00' };
 
-<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-    {% if charts.speed %}
-    <div class="card">
-        <div class="card-title">Benchmark — Speed per Comparison</div>
-        <div class="text-muted text-sm" style="margin-bottom:12px">Log-scale bar chart. K-mer and Motif are orders of magnitude faster than BLOSUM62.</div>
-        <img src="data:image/png;base64,{{ charts.speed }}" style="width:100%; border-radius:8px; border:1px solid var(--border-light);">
-    </div>
-    {% endif %}
+function readJSON(key) { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { return null; } }
+function timeAgo(ts) {
+  if (!ts) return '';
+  const s = Math.round((Date.now() - ts) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return new Date(ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
-    {% if charts.agreement %}
-    <div class="card">
-        <div class="card-title">Benchmark — Agreement vs BLOSUM62</div>
-        <div class="text-muted text-sm" style="margin-bottom:12px">Pearson correlation of each metric against BLOSUM62 across 50 random gene pairs.</div>
-        <img src="data:image/png;base64,{{ charts.agreement }}" style="width:100%; border-radius:8px; border:1px solid var(--border-light);">
-    </div>
-    {% endif %}
-</div>
+/* ---------- Tooltip ---------- */
+function showTip(e, html) {
+  const t = $('tooltip');
+  t.innerHTML = html; t.classList.add('show');
+  const pad = 14, w = t.offsetWidth, h = t.offsetHeight;
+  let x = e.clientX + pad, y = e.clientY + pad;
+  if (x + w > window.innerWidth - 8) x = e.clientX - w - pad;
+  if (y + h > window.innerHeight - 8) y = e.clientY - h - pad;
+  t.style.left = x + 'px'; t.style.top = y + 'px';
+}
+function hideTip() { $('tooltip').classList.remove('show'); }
 
-{% endif %}
+/* ==========================================================================
+   Latest search
+   ========================================================================== */
+const S = { data: null, metrics: [], rows: [], label: {}, view: 'chart' };
 
+function metricLabel(m) {
+  const dna = S.data && S.data.seq_mode === 'dna';
+  return { blosum: dna ? 'DNA alignment' : 'BLOSUM62', kmer: `K-mer, k = ${S.data && S.data.kmer_k ? S.data.kmer_k : 3}`, edit: 'Edit distance', motif: 'Motif' }[m] || m;
+}
+
+function initSearch() {
+  const saved = readJSON('genesim_last_search');
+  if (!saved || !saved.data || !Array.isArray(saved.data.results)) return false;
+  S.data = saved.data;
+  S.metrics = ORDER.filter(m => (saved.metrics || []).includes(m));
+  const q = S.data.query_label === 'custom_sequence' ? 'Unnamed sequence' : S.data.query_label;
+  S.rows = S.data.results.filter(r => r.gene !== S.data.query_label).slice(0, 12);
+
+  $('sec-search').classList.remove('hidden');
+  $('jump-search').classList.remove('hidden');
+  $('ls-title').textContent = `Latest search: ${q}`;
+  const ranked = S.data._rankedBy ? `<span class="tag">Ranked by ${esc(metricLabel(S.data._rankedBy))}</span>` : '';
+  $('ls-sub').innerHTML = `<span class="tag">${S.data.seq_mode === 'dna' ? 'Nucleotide' : 'Protein'}</span>
+    <span class="tag">${Number(S.data.query_length).toLocaleString('en-US')} ${S.data.seq_mode === 'dna' ? 'bp' : 'aa'}</span>
+    <span class="tag">${Number(S.data.total_compared).toLocaleString('en-US')} compared</span>${ranked}
+    <span>${timeAgo(saved.at)}</span><a href="/?mode=${S.data.seq_mode === 'dna' ? 'dna' : 'protein'}">Open search</a>`;
+  $('ls-legend').innerHTML = S.metrics.map(m => `<span style="--c:${COLOR[m]}"><i></i>${esc(metricLabel(m))}</span>`).join('');
+
+  // Scatter axis choices
+  const opts = S.metrics.map(m => `<option value="${m}">${esc(metricLabel(m))}</option>`).join('');
+  $('sx').innerHTML = opts; $('sy').innerHTML = opts;
+  if (S.metrics.length >= 2) { $('sx').value = S.metrics[0]; $('sy').value = S.metrics[1]; }
+  $('sx').addEventListener('change', drawScatter);
+  $('sy').addEventListener('change', drawScatter);
+  drawSearchCharts();
+  return true;
+}
+
+function drawSearchCharts() { drawBars(); drawHeat(); drawScatter(); }
+
+function setBarsView(v) {
+  S.view = v;
+  $('bars-view-chart').setAttribute('aria-pressed', v === 'chart' ? 'true' : 'false');
+  $('bars-view-table').setAttribute('aria-pressed', v === 'table' ? 'true' : 'false');
+  drawBars();
+}
+
+function tipRow(r) {
+  return `<div class="tt-h">${esc(r.gene)}<small>${esc(r.isoform)}</small></div>` +
+    S.metrics.map(m => `<div class="tt-r"><span style="--c:${COLOR[m]}"><i></i>${esc(metricLabel(m))}</span><b>${(r.scores[m] ?? 0).toFixed(4)}</b></div>`).join('');
+}
+
+function drawBars() {
+  const host = $('bars-chart');
+  if (!S.rows.length) { host.innerHTML = '<div class="chart-empty">The last search returned no matches besides the query.</div>'; return; }
+  if (S.view === 'table') {
+    host.innerHTML = `<table class="data"><thead><tr><th>Gene</th>${S.metrics.map(m => `<th>${esc(metricLabel(m))}</th>`).join('')}</tr></thead><tbody>
+      ${S.rows.map(r => `<tr><td>${esc(r.gene)}</td>${S.metrics.map(m => `<td>${(r.scores[m] ?? 0).toFixed(4)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    return;
+  }
+  const W = Math.max(360, host.clientWidth - 40);
+  const labelW = 92, rightPad = 12, nM = S.metrics.length;
+  const barH = nM > 2 ? 5 : 7, gap = 2;
+  const rowH = Math.max(30, nM * (barH + gap) + 14);
+  const top = 4, H = top + S.rows.length * rowH + 28;
+  const x = (v) => labelW + Math.max(0, Math.min(1, v)) * (W - labelW - rightPad);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Scores of the top matches for each metric">`;
+  for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+    svg += `<line class="${t === 0 ? 'zero' : 'grid'}" x1="${x(t)}" x2="${x(t)}" y1="${top}" y2="${H - 22}"/>`;
+    svg += `<text class="axis-label" x="${x(t)}" y="${H - 6}" text-anchor="middle">${t === 0 ? '0' : t.toFixed(2)}</text>`;
+  }
+  S.rows.forEach((r, i) => {
+    const y0 = top + i * rowH;
+    const blockH = nM * barH + (nM - 1) * gap;
+    const by = y0 + (rowH - blockH) / 2;
+    svg += `<text class="row-label" x="0" y="${y0 + rowH / 2 + 4}">${esc(r.gene)}</text>`;
+    S.metrics.forEach((m, k) => {
+      const v = r.scores[m] ?? 0;
+      const w = Math.max(1.5, x(v) - x(0));
+      svg += `<rect x="${x(0)}" y="${by + k * (barH + gap)}" width="${w}" height="${barH}" rx="${Math.min(2, barH / 2)}" fill="${COLOR[m]}"/>`;
+    });
+    svg += `<rect class="hit" x="0" y="${y0}" width="${W}" height="${rowH}" data-i="${i}"/>`;
+  });
+  svg += '</svg>';
+  host.innerHTML = svg;
+  host.querySelectorAll('.hit').forEach(el => {
+    el.addEventListener('mousemove', (e) => showTip(e, tipRow(S.rows[+el.dataset.i])));
+    el.addEventListener('mouseleave', hideTip);
+  });
+}
+
+function drawHeat() {
+  const host = $('heat-chart');
+  const rows = S.data.results.slice(0, 12);
+  if (!rows.length || !S.metrics.length) { host.innerHTML = '<div class="chart-empty">No scores to show.</div>'; return; }
+  const W = Math.max(300, host.clientWidth - 40);
+  const labelW = 96, headH = 30, cellH = 30, gap = 2;
+  const cellW = (W - labelW - gap * (S.metrics.length - 1)) / S.metrics.length;
+  const H = headH + rows.length * (cellH + gap);
+  // Sequential single hue (brand indigo): light for low, dark for high
+  const ramp = (v) => {
+    const t = Math.max(0, Math.min(1, v));
+    const a = [238, 240, 253], b = [36, 32, 120];
+    const c = a.map((ai, i) => Math.round(ai + (b[i] - ai) * Math.pow(t, 0.85)));
+    return `rgb(${c.join(',')})`;
+  };
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Heatmap of scores for the top matches and each metric">`;
+  S.metrics.forEach((m, k) => {
+    const cx = labelW + k * (cellW + gap) + cellW / 2;
+    svg += `<circle cx="${cx - Math.min(cellW / 2 - 8, metricLabel(m).length * 3.1) - 8}" cy="${headH / 2 - 1}" r="4" fill="${COLOR[m]}"/>`;
+    svg += `<text class="axis-title" x="${cx}" y="${headH / 2 + 3}" text-anchor="middle">${esc(cellW < 90 ? metricLabel(m).split(',')[0] : metricLabel(m))}</text>`;
+  });
+  rows.forEach((r, i) => {
+    const y = headH + i * (cellH + gap);
+    const self = r.gene === S.data.query_label;
+    svg += `<text class="row-label" x="0" y="${y + cellH / 2 + 4}" ${self ? 'style="fill:var(--ink-3)"' : ''}>${esc(r.gene)}${self ? ' (query)' : ''}</text>`;
+    S.metrics.forEach((m, k) => {
+      const v = r.scores[m] ?? 0;
+      const x = labelW + k * (cellW + gap);
+      svg += `<rect x="${x}" y="${y}" width="${cellW}" height="${cellH}" rx="4" fill="${ramp(v)}"/>`;
+      svg += `<text class="cell-label" x="${x + cellW / 2}" y="${y + cellH / 2 + 4}" text-anchor="middle" fill="${v > 0.45 ? '#fff' : '#3B4660'}">${v.toFixed(3)}</text>`;
+      svg += `<rect class="hit" x="${x}" y="${y}" width="${cellW}" height="${cellH}" data-i="${i}" data-m="${m}"/>`;
+    });
+  });
+  svg += '</svg>';
+  host.innerHTML = svg;
+  host.querySelectorAll('.hit').forEach(el => {
+    el.addEventListener('mousemove', (e) => {
+      const r = rows[+el.dataset.i], m = el.dataset.m;
+      showTip(e, `<div class="tt-h">${esc(r.gene)}<small>${esc(r.isoform)}</small></div><div class="tt-r"><span style="--c:${COLOR[m]}"><i></i>${esc(metricLabel(m))}</span><b>${(r.scores[m] ?? 0).toFixed(4)}</b></div>`);
+    });
+    el.addEventListener('mouseleave', hideTip);
+  });
+}
+
+function drawScatter() {
+  const host = $('scatter-chart');
+  $('scatter-ctrl').classList.toggle('hidden', S.metrics.length < 2);
+  if (S.metrics.length < 2) {
+    host.innerHTML = '<div class="chart-empty">This search ran one metric. Run two or more to compare how they agree.</div>';
+    return;
+  }
+  const mx = $('sx').value, my = $('sy').value;
+  const rows = S.data.results.filter(r => r.gene !== S.data.query_label);
+  const W = Math.max(320, host.clientWidth - 40), H = Math.min(380, Math.max(260, W * 0.62));
+  const L = 44, R = 14, T = 10, B = 40;
+  const maxX = Math.max(0.05, ...rows.map(r => r.scores[mx] ?? 0)), maxY = Math.max(0.05, ...rows.map(r => r.scores[my] ?? 0));
+  const ext = Math.min(1, Math.ceil(Math.max(maxX, maxY) * 10 + 0.5) / 10);
+  const x = (v) => L + (v / ext) * (W - L - R);
+  const y = (v) => H - B - (v / ext) * (H - T - B);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Scatter of ${esc(metricLabel(mx))} against ${esc(metricLabel(my))} for each match">`;
+  const ticks = 5;
+  for (let i = 0; i <= ticks; i++) {
+    const v = ext * i / ticks;
+    svg += `<line class="${i === 0 ? 'zero' : 'grid'}" x1="${x(v)}" x2="${x(v)}" y1="${T}" y2="${H - B}"/>`;
+    svg += `<line class="${i === 0 ? 'zero' : 'grid'}" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>`;
+    svg += `<text class="axis-label" x="${x(v)}" y="${H - B + 16}" text-anchor="middle">${v.toFixed(2)}</text>`;
+    svg += `<text class="axis-label" x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${v.toFixed(2)}</text>`;
+  }
+  svg += `<line x1="${x(0)}" y1="${y(0)}" x2="${x(ext)}" y2="${y(ext)}" stroke="#B9C2D0" stroke-dasharray="4 4"/>`;
+  svg += `<text class="axis-title" x="${(L + W - R) / 2}" y="${H - 4}" text-anchor="middle">${esc(metricLabel(mx))}</text>`;
+  svg += `<text class="axis-title" transform="translate(11 ${(T + H - B) / 2}) rotate(-90)" text-anchor="middle">${esc(metricLabel(my))}</text>`;
+  rows.forEach((r, i) => {
+    svg += `<circle class="pt" cx="${x(r.scores[mx] ?? 0)}" cy="${y(r.scores[my] ?? 0)}" r="6" fill="${COLOR[my]}" fill-opacity=".85" stroke="#fff" stroke-width="2" data-i="${i}"/>`;
+  });
+  // Direct labels for the three best matches on the vertical metric
+  // Skip a label when it would collide with one already placed
+  const placed = [];
+  rows.slice().sort((a, b) => (b.scores[my] ?? 0) - (a.scores[my] ?? 0)).slice(0, 4).forEach(r => {
+    const lx = x(r.scores[mx] ?? 0) + 10, ly = y(r.scores[my] ?? 0) + 4, lw = r.gene.length * 7 + 4;
+    if (placed.some(p => Math.abs(p.y - ly) < 14 && lx < p.x + p.w && p.x < lx + lw)) return;
+    placed.push({ x: lx, y: ly, w: lw });
+    svg += `<text class="val-label" x="${lx}" y="${ly}">${esc(r.gene)}</text>`;
+  });
+  svg += '</svg>';
+  host.innerHTML = svg;
+  host.querySelectorAll('.pt').forEach(el => {
+    el.addEventListener('mousemove', (e) => showTip(e, tipRow(rows[+el.dataset.i])));
+    el.addEventListener('mouseleave', hideTip);
+  });
+}
+
+/* ==========================================================================
+   Latest benchmark (saved by the Benchmark page)
+   ========================================================================== */
+const BENCH_META = { blosum: 'BLOSUM62', kmer: 'K-mer, k = 3', edit: 'Edit distance', motif: 'Motif, JASPAR' };
+function benchKey(name) {
+  const n = String(name).toLowerCase();
+  return n.startsWith('blosum') ? 'blosum' : n.startsWith('k-mer') ? 'kmer' : n.startsWith('edit') ? 'edit' : n.startsWith('motif') ? 'motif' : null;
+}
+function fmtMs(v) {
+  if (v >= 100) return `${Math.round(v).toLocaleString('en-US')} ms`;
+  if (v >= 1) return `${v.toFixed(v >= 10 ? 1 : 2)} ms`;
+  if (v >= 0.001) return `${(v * 1000).toFixed(v >= 0.01 ? 0 : 1)} µs`;
+  return `${(v * 1e6).toFixed(0)} ns`;
+}
+let BENCH = null;
+
+function initBench() {
+  const saved = readJSON('genesim_last_benchmark');
+  if (!saved || !saved.data || !Array.isArray(saved.data.results)) { $('bench-invite').classList.remove('hidden'); return false; }
+  BENCH = saved.data;
+  $('sec-bench').classList.remove('hidden');
+  $('jump-bench').classList.remove('hidden');
+  const u = BENCH.usage || {};
+  $('lb-sub').innerHTML = `<span class="tag">${BENCH.pairs_tested} pairs</span>${u.wall_time_s !== undefined ? `<span class="tag">${u.wall_time_s} s total</span>` : ''}${BENCH.cpu ? `<span class="tag">${esc(BENCH.cpu.model)}</span>` : ''}<span>${timeAgo(saved.at)}</span>`;
+  drawBench();
+  return true;
+}
+
+function drawBench() {
+  if (!BENCH) return;
+  const res = BENCH.results;
+  // Speed
+  {
+    const host = $('speed-chart');
+    const W = Math.max(320, host.clientWidth - 40), rowH = 44, top = 4, labelW = 112, rightPad = 70;
+    const H = top + res.length * rowH + 28;
+    const vals = res.flatMap(r => [r.min_ms, r.max_ms, r.avg_ms]).filter(v => v > 0);
+    let lo = Math.floor(Math.log10(Math.min(...vals))), hi = Math.ceil(Math.log10(Math.max(...vals)));
+    if (hi === lo) hi = lo + 1;
+    const x = (v) => labelW + (Math.log10(Math.max(v, 10 ** lo)) - lo) / (hi - lo) * (W - labelW - rightPad);
+    let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Time per comparison for each metric, log scale">`;
+    for (let p = lo; p <= hi; p++) {
+      svg += `<line class="grid" x1="${x(10 ** p)}" x2="${x(10 ** p)}" y1="${top}" y2="${H - 22}"/>`;
+      svg += `<text class="axis-label" x="${x(10 ** p)}" y="${H - 6}" text-anchor="middle">${p >= 3 ? 10 ** (p - 3) + ' s' : p >= 0 ? 10 ** p + ' ms' : p >= -3 ? Math.round(10 ** (p + 3)) + ' µs' : Math.round(10 ** (p + 6)) + ' ns'}</text>`;
+    }
+    res.forEach((r, i) => {
+      const k = benchKey(r.metric), c = COLOR[k] || '#66718A';
+      const cy = top + i * rowH + rowH / 2;
+      svg += `<text class="row-label" x="0" y="${cy + 4}">${esc(BENCH_META[k] || r.metric)}</text>`;
+      svg += `<line x1="${x(r.min_ms)}" x2="${x(r.max_ms)}" y1="${cy}" y2="${cy}" stroke="${c}" stroke-opacity=".35" stroke-width="4" stroke-linecap="round"/>`;
+      svg += `<circle cx="${x(r.avg_ms)}" cy="${cy}" r="7" fill="${c}" stroke="#fff" stroke-width="2"/>`;
+      svg += `<text class="val-label" x="${Math.max(x(r.max_ms), x(r.avg_ms)) + 12}" y="${cy + 4}">${fmtMs(r.avg_ms)}</text>`;
+      svg += `<rect class="hit" x="0" y="${cy - rowH / 2}" width="${W}" height="${rowH}" data-i="${i}"/>`;
+    });
+    host.innerHTML = svg + '</svg>';
+    host.querySelectorAll('.hit').forEach(el => {
+      el.addEventListener('mousemove', (e) => {
+        const r = res[+el.dataset.i], c = COLOR[benchKey(r.metric)];
+        showTip(e, `<div class="tt-h">${esc(r.metric)}</div>
+          <div class="tt-r"><span style="--c:${c}"><i></i>Average</span><b>${fmtMs(r.avg_ms)}</b></div>
+          <div class="tt-r">Min to max<b>${fmtMs(r.min_ms)} to ${fmtMs(r.max_ms)}</b></div>
+          <div class="tt-r">Average CPU<b>${fmtMs(r.avg_cpu_ms)}</b></div>`);
+      });
+      el.addEventListener('mouseleave', hideTip);
+    });
+  }
+  // Agreement
+  {
+    const host = $('corr-chart');
+    const W = Math.max(300, host.clientWidth - 40), rowH = 44, top = 4, labelW = 112, rightPad = 100;
+    const H = top + res.length * rowH + 28;
+    const x = (v) => labelW + (v + 1) / 2 * (W - labelW - rightPad);
+    let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Pearson correlation of each metric with BLOSUM62">
+      <defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#F0EEFD"/><line x1="0" y1="0" x2="0" y2="6" stroke="#5A4BDB" stroke-opacity=".45" stroke-width="2"/></pattern></defs>`;
+    for (const t of [-1, -0.5, 0, 0.5, 1]) {
+      svg += `<line class="${t === 0 ? 'zero' : 'grid'}" x1="${x(t)}" x2="${x(t)}" y1="${top}" y2="${H - 22}"/>`;
+      svg += `<text class="axis-label" x="${x(t)}" y="${H - 6}" text-anchor="middle">${t === 0 ? '0' : t.toFixed(1)}</text>`;
+    }
+    res.forEach((r, i) => {
+      const k = benchKey(r.metric), ref = k === 'blosum';
+      const cy = top + i * rowH + rowH / 2;
+      const v = isNaN(r.corr) ? 0 : Math.max(-1, Math.min(1, r.corr));
+      const bx = Math.min(x(0), x(v)), bw = Math.max(2, Math.abs(x(v) - x(0)));
+      svg += `<text class="row-label" x="0" y="${cy + 4}">${esc(BENCH_META[k] || r.metric)}</text>`;
+      svg += `<rect x="${bx}" y="${cy - 9}" width="${bw}" height="18" rx="4" fill="${ref ? 'url(#hatch)' : COLOR[k]}"/>`;
+      svg += `<text class="val-label" x="${v >= 0 ? x(v) + 8 : x(v) - 8}" y="${cy + 4}" text-anchor="${v >= 0 ? 'start' : 'end'}">${ref ? '1.00, reference' : v.toFixed(2)}</text>`;
+      svg += `<rect class="hit" x="0" y="${cy - rowH / 2}" width="${W}" height="${rowH}" data-i="${i}"/>`;
+    });
+    host.innerHTML = svg + '</svg>';
+    host.querySelectorAll('.hit').forEach(el => {
+      el.addEventListener('mousemove', (e) => {
+        const r = res[+el.dataset.i];
+        showTip(e, `<div class="tt-h">${esc(r.metric)}</div><div class="tt-r"><span style="--c:${COLOR[benchKey(r.metric)]}"><i></i>Pearson r</span><b>${r.corr.toFixed(4)}</b></div>`);
+      });
+      el.addEventListener('mouseleave', hideTip);
+    });
+  }
+}
+
+/* ==========================================================================
+   Lightbox for server figures
+   ========================================================================== */
+function openLightbox(btn) {
+  const img = btn.querySelector('img');
+  $('lb-img').src = img.src; $('lb-img').alt = img.alt;
+  $('lb-cap').textContent = btn.dataset.caption || '';
+  $('lb-download').href = img.src;
+  $('lb-download').download = (btn.dataset.caption || 'genesim_figure').replace(/[^A-Za-z0-9]+/g, '_').toLowerCase() + '.png';
+  $('lightbox').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeLightbox() { $('lightbox').classList.remove('open'); document.body.style.overflow = ''; }
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('lightbox').classList.contains('open')) closeLightbox(); });
+
+/* ---------- Start ---------- */
+const hasSearch = initSearch();
+const hasBench = initBench();
+if (!hasSearch && !hasBench && !HAS_SERVER_CHARTS) {
+  $('empty-all').classList.remove('hidden');
+  $('bench-invite').classList.add('hidden');
+}
+let rt = 0;
+window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (S.data) drawSearchCharts(); drawBench(); }, 150); });
+</script>
 {% endblock %}

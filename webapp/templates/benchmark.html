@@ -1,168 +1,573 @@
 {% extends "base.html" %}
-{% block title %}Benchmark — GeneSim{% endblock %}
-{% block page_title %}Metric Benchmarks{% endblock %}
-{% block page_sub %}Compare speed and accuracy of all similarity metrics{% endblock %}
+{% block title %}Benchmark · GeneSim{% endblock %}
+{% block body_class %}page-benchmark{% endblock %}
+
+{% block head %}
+<style>
+.hero { padding: 40px 0 26px; }
+.hero-inner { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; }
+.hero .page-title { font-size: 38px; }
+.hero .page-sub { font-size: 15.5px; max-width: 62ch; }
+
+.bench-layout { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 18px; align-items: start; }
+.config { position: sticky; top: calc(var(--topbar-h) + 18px); }
+.config .panel-body { display: grid; gap: 18px; }
+.slider-row { display: grid; grid-template-columns: 1fr 48px; gap: 14px; align-items: center; }
+.slider-val { height: 32px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--surface); display: grid; place-items: center; font-weight: 600; font-variant-numeric: tabular-nums; font-size: 13.5px; }
+.ticks { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ink-4); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.metric-keys { display: grid; gap: 8px; }
+.metric-keys div { display: grid; grid-template-columns: 10px 1fr; gap: 10px; align-items: baseline; font-size: 12.5px; color: var(--ink-2); }
+.metric-keys i { width: 8px; height: 8px; border-radius: 2px; background: var(--c); transform: translateY(-1px); }
+.metric-keys small { display: block; color: var(--ink-3); font-size: 12px; }
+.config .btn-lg { width: 100%; }
+.prev-run { border-top: 1px solid var(--line); padding: 14px 20px; font-size: 12.5px; color: var(--ink-3); line-height: 1.5; }
+.prev-run b { color: var(--ink-2); font-weight: 600; }
+
+/* Empty state */
+.bench-empty { border: 1px dashed var(--line-2); border-radius: var(--r-lg); padding: 32px; display: grid; gap: 22px; }
+.bench-empty h3 { font-size: 17px; font-weight: 600; color: var(--ink); }
+.bench-empty p { margin-top: 6px; font-size: 13.5px; color: var(--ink-3); line-height: 1.6; max-width: 70ch; }
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.steps div { border-top: 2px solid var(--line-2); padding-top: 10px; }
+.steps b { display: block; font-size: 13px; font-weight: 600; color: var(--ink); }
+.steps span { display: block; font-size: 12.5px; color: var(--ink-3); margin-top: 3px; line-height: 1.5; }
+
+/* Results */
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); overflow: hidden; margin-bottom: 18px; }
+.fact { padding: 14px 18px; border-right: 1px solid var(--line); min-width: 0; }
+.fact:last-child { border-right: 0; }
+.fact .k { font-size: 12px; color: var(--ink-3); }
+.fact .v { margin-top: 3px; font-size: 19px; font-weight: 600; color: var(--ink); letter-spacing: -.01em; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fact .v small { font-size: 12.5px; font-weight: 500; color: var(--ink-3); margin-left: 3px; }
+.fact .v .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--c); margin-right: 7px; vertical-align: 1px; }
+
+.chart-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px; margin-bottom: 18px; }
+.chart-panel .panel-head { align-items: flex-start; }
+.chart-panel .panel-body { padding: 14px 20px 18px; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--ink-3); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend .sw-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ink-2); }
+.legend .sw-ring { width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--ink-3); }
+.legend .sw-range { width: 16px; height: 3px; border-radius: 3px; background: var(--ink-4); }
+.chart svg { width: 100%; height: auto; overflow: visible; }
+.chart text { font-family: var(--font-sans); }
+.chart .axis-label { fill: var(--ink-3); font-size: 11px; }
+.chart .row-label { fill: var(--ink); font-size: 12.5px; font-weight: 500; }
+.chart .val-label { fill: var(--ink-2); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.chart .grid { stroke: #E8ECF2; stroke-width: 1; }
+.chart .zero { stroke: #B9C2D0; stroke-width: 1; }
+.chart .hit { fill: transparent; cursor: default; }
+.chart .hit:hover { fill: rgba(13,22,48,.03); }
+
+.tooltip { position: fixed; z-index: 300; pointer-events: none; background: var(--ink); color: #fff; border-radius: 10px; padding: 10px 12px; font-size: 12px; line-height: 1.5; box-shadow: var(--shadow-3); opacity: 0; transform: translateY(4px); transition: opacity .12s, transform .12s; min-width: 160px; }
+.tooltip.show { opacity: 1; transform: none; }
+.tooltip .tt-h { display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 12.5px; margin-bottom: 4px; }
+.tooltip .tt-h i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+.tooltip .tt-r { display: flex; justify-content: space-between; gap: 18px; color: rgba(255,255,255,.72); }
+.tooltip .tt-r b { color: #fff; font-weight: 500; font-variant-numeric: tabular-nums; }
+
+.table-panel { overflow: hidden; margin-bottom: 18px; }
+.table-scroll { overflow-x: auto; }
+table.bench { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+table.bench th { text-align: left; font-size: 12px; font-weight: 500; color: var(--ink-3); padding: 0 12px; height: 40px; background: var(--surface-sunk); border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.bench th.r, table.bench td.r { text-align: right; }
+table.bench td { padding: 0 12px; height: 52px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.bench tr:last-child td { border-bottom: 0; }
+table.bench td:first-child, table.bench th:first-child { padding-left: 20px; }
+.m-name { display: inline-flex; align-items: center; gap: 9px; font-weight: 600; color: var(--ink); }
+.m-name i { width: 9px; height: 9px; border-radius: 3px; background: var(--c); }
+.num { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.num.muted { color: var(--ink-3); }
+.rel { display: grid; grid-template-columns: 84px 64px; gap: 10px; align-items: center; }
+.rel .track { height: 6px; border-radius: 6px; background: #EBEEF3; overflow: hidden; }
+.rel .track i { display: block; height: 100%; border-radius: 6px; background: var(--c); }
+.rel .x { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.corr-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); }
+.corr-tag::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--s); }
+.delta { font-size: 12px; font-variant-numeric: tabular-nums; }
+.delta.faster { color: var(--ok); }
+.delta.slower { color: var(--err); }
+.delta.same { color: var(--ink-3); }
+
+.env-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; margin-bottom: 18px; }
+.kv { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.kv > div { padding: 14px 20px; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); min-width: 0; }
+.kv > div:nth-child(2n) { border-right: 0; }
+.kv > div:nth-last-child(-n+2) { border-bottom: 0; }
+.kv .k { font-size: 12px; color: var(--ink-3); }
+.kv .v { font-size: 14.5px; font-weight: 600; color: var(--ink); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.kv .v small { font-weight: 500; color: var(--ink-3); font-size: 12px; margin-left: 4px; }
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 500; padding: 0 7px; height: 20px; border-radius: 5px; margin-left: 8px; vertical-align: 2px; }
+.status.low { background: var(--ok-wash); color: var(--ok); }
+.status.mid { background: var(--warn-wash); color: var(--warn); }
+.status.high { background: var(--err-wash); color: var(--err); }
+.env-note { padding: 12px 20px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--ink-3); line-height: 1.55; background: var(--surface-sunk); }
+
+.read-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
+.read-grid b { display: block; font-size: 13.5px; color: var(--ink); margin-bottom: 4px; }
+.read-grid p { font-size: 13px; color: var(--ink-2); line-height: 1.65; }
+
+#bench-error { margin-bottom: 18px; }
+
+@media (max-width: 1180px) {
+  .chart-grid, .env-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 960px) {
+  .bench-layout { grid-template-columns: 1fr; }
+  .config { position: static; }
+  .steps, .read-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .hero .page-title { font-size: 30px; }
+  .kv { grid-template-columns: 1fr; }
+  .kv > div { border-right: 0; }
+  .kv > div:nth-last-child(2) { border-bottom: 1px solid var(--line); }
+}
+</style>
+{% endblock %}
+
+{% block page_header %}
+<section class="hero">
+  <div class="wrap hero-inner">
+    <div>
+      <h1 class="page-title">Metric benchmark</h1>
+      <p class="page-sub">Time all four similarity metrics on the same random protein pairs and see how closely each one agrees with BLOSUM62 alignment, on this machine.</p>
+    </div>
+  </div>
+</section>
+{% endblock %}
 
 {% block content %}
+<div class="bench-layout">
 
-<div style="display:grid; grid-template-columns:320px 1fr; gap:20px; align-items:start;">
-
-    <div class="card">
-        <div class="card-title">Configure</div>
-        <div class="form-group">
-            <label class="form-label">
-                Gene pairs to test: <span id="pairs-val" style="color:var(--accent); font-weight:600">20</span>
-            </label>
-            <input type="range" id="n-pairs" min="5" max="50" value="20"
-                   oninput="document.getElementById('pairs-val').textContent=this.value">
-            <div class="text-muted text-sm mt-8">More pairs = more accurate, but slower.</div>
+  <!-- ======================= Configuration ======================= -->
+  <aside class="panel config" aria-label="Benchmark settings">
+    <div class="panel-head"><span class="panel-title">Configure</span></div>
+    <div class="panel-body">
+      <div class="field">
+        <label class="field-label" for="n-pairs">Gene pairs to test</label>
+        <div class="slider-row">
+          <input type="range" class="range" id="n-pairs" min="5" max="50" value="20" step="1">
+          <output class="slider-val" id="pairs-val" for="n-pairs">20</output>
         </div>
-        <button class="btn btn-primary" style="width:100%;" onclick="runBenchmark()" id="bench-btn">
-            ⚡ Run Benchmark
-        </button>
+        <div class="ticks"><span>5</span><span>50</span></div>
+        <span class="hint">More pairs give steadier averages but take longer. Pairs are drawn with a fixed seed, so the same count tests the same pairs.</span>
+      </div>
+      <div class="metric-keys">
+        <div style="--c:#5A4BDB"><i></i><span>BLOSUM62<small>The reference every other metric is compared with</small></span></div>
+        <div style="--c:#0A9384"><i></i><span>K-mer, k = 3</span></div>
+        <div style="--c:#E0512F"><i></i><span>Edit distance</span></div>
+        <div style="--c:#D69E00"><i></i><span>Motif, JASPAR</span></div>
+      </div>
+      <button class="btn btn-primary btn-lg" onclick="runBenchmark()" id="bench-btn">
+        <svg viewBox="0 0 24 24"><path d="M12 13.5 16 9"/><path d="M4.5 18a8.5 8.5 0 1 1 15 0"/></svg>Run benchmark
+      </button>
+    </div>
+    <div class="prev-run hidden" id="prev-run"></div>
+  </aside>
+
+  <!-- ======================= Results ======================= -->
+  <div aria-live="polite">
+    <div id="bench-error" class="notice notice-err hidden" role="alert">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg>
+      <div id="bench-error-text"></div>
     </div>
 
-    <div>
-        <div id="bench-empty" class="card" style="text-align:center; padding:48px 24px;">
-            <div style="font-size:44px; margin-bottom:16px">⚡</div>
-            <div style="font-size:16px; font-weight:600; margin-bottom:8px">No benchmark run yet</div>
-            <div class="text-muted text-sm" style="line-height:1.6">Configure the number of gene pairs and click Run Benchmark to compare metric performance.</div>
-        </div>
-
-        <div id="bench-results" class="hidden">
-
-            <div class="stat-row" id="bench-stats"></div>
-
-            <div class="card" id="cpu-info-card">
-                <div class="card-title">CPU Info</div>
-                <div id="cpu-info-body" class="text-sm" style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:14px;"></div>
-                <div class="text-muted text-sm" style="text-transform:uppercase; font-size:11px; letter-spacing:0.04em; margin-bottom:6px;">During this benchmark run</div>
-                <div id="cpu-usage-body" class="text-sm" style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px;"></div>
-                <div class="text-muted text-sm mt-8">
-                    Process CPU % is how busy this app kept the CPU while running the test; System CPU % is the whole machine's load (other programs included). Timings depend on this hardware — the relative speed between metrics matters more than the absolute numbers.
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">Speed & Agreement</div>
-                <div style="overflow-x:auto;">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Metric</th>
-                                <th>Avg time</th>
-                                <th>Avg CPU time</th>
-                                <th>Min</th>
-                                <th>Max</th>
-                                <th>vs BLOSUM62 (r)</th>
-                                <th>Relative speed</th>
-                            </tr>
-                        </thead>
-                        <tbody id="bench-tbody"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">How to read this</div>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; font-size:13px; color:var(--text-mid); line-height:1.7;">
-                    <div>
-                        <strong style="color:var(--text); display:block; margin-bottom:4px">Speed (avg time)</strong>
-                        Time for a single pairwise comparison. K-mer and Motif are near-instant. BLOSUM62 is much slower, especially on long sequences like BRCA2 (3,418 AA).
-                    </div>
-                    <div>
-                        <strong style="color:var(--text); display:block; margin-bottom:4px">Agreement (r)</strong>
-                        Pearson correlation with BLOSUM62 scores. High r = agrees with BLOSUM62. Motif can disagree — this is intentional, revealing functional similarity that sequence alone misses.
-                    </div>
-                </div>
-            </div>
-        </div>
+    <div id="bench-empty" class="bench-empty">
+      <div>
+        <h3>No benchmark run yet</h3>
+        <p>Choose how many gene pairs to test, then run the benchmark. Results stay on this page and also appear on Visualizations, and the next run is compared with this one.</p>
+      </div>
+      <div class="steps">
+        <div><b>Pick random pairs</b><span>Protein sequences from the local database, one per gene.</span></div>
+        <div><b>Time every metric</b><span>Wall-clock and CPU time for each comparison, per metric.</span></div>
+        <div><b>Measure agreement</b><span>Pearson correlation of each metric's scores with BLOSUM62.</span></div>
+      </div>
     </div>
+
+    <div id="bench-results" class="hidden">
+      <div class="panel facts" id="bench-stats"></div>
+
+      <div class="chart-grid">
+        <section class="panel chart-panel">
+          <div class="panel-head">
+            <div><div class="panel-title">Time per comparison</div><div class="panel-sub">Milliseconds, log scale</div></div>
+            <div class="legend" id="speed-legend">
+              <span><i class="sw-dot"></i>Average</span><span><i class="sw-range"></i>Min to max</span>
+            </div>
+          </div>
+          <div class="panel-body chart" id="speed-chart"></div>
+        </section>
+        <section class="panel chart-panel">
+          <div class="panel-head">
+            <div><div class="panel-title">Agreement with BLOSUM62</div><div class="panel-sub">Pearson r across the tested pairs</div></div>
+          </div>
+          <div class="panel-body chart" id="corr-chart"></div>
+        </section>
+      </div>
+
+      <section class="panel table-panel">
+        <div class="panel-head"><span class="panel-title">Speed and agreement</span><span class="panel-sub" id="table-sub"></span></div>
+        <div class="table-scroll">
+          <table class="bench">
+            <thead>
+              <tr>
+                <th>Metric</th>
+                <th class="r">Avg time</th>
+                <th class="r">Avg CPU time</th>
+                <th class="r">Min</th>
+                <th class="r">Max</th>
+                <th class="r">vs BLOSUM62 (r)</th>
+                <th title="Average time relative to the fastest metric">Relative time</th>
+                <th class="r" id="delta-head">vs previous run</th>
+              </tr>
+            </thead>
+            <tbody id="bench-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <div class="env-grid" id="cpu-info-card">
+        <section class="panel">
+          <div class="panel-head"><span class="panel-title">Machine</span></div>
+          <div class="kv" id="cpu-info-body"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><span class="panel-title">During this run</span></div>
+          <div class="kv" id="cpu-usage-body"></div>
+          <div class="env-note">Process CPU is how busy GeneSim kept the CPU during the test; system CPU is the whole machine, other programs included. Timings depend on this hardware, so the speed of each metric relative to the others matters more than the absolute numbers.</div>
+        </section>
+      </div>
+
+      <section class="panel">
+        <div class="panel-head"><span class="panel-title">How to read this</span></div>
+        <div class="panel-body read-grid">
+          <div>
+            <b>Speed, average time</b>
+            <p>The time for a single pairwise comparison. K-mer and motif are near-instant: motif compares cached transcription factor sets. BLOSUM62 and edit distance are much slower, especially on long proteins such as BRCA2 (3,418 aa).</p>
+          </div>
+          <div>
+            <b>Agreement, r</b>
+            <p>Pearson correlation with BLOSUM62 scores. A high r means the metric ranks pairs much as alignment does. Motif can disagree on purpose: it reveals shared regulation that sequence similarity alone misses.</p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
 </div>
+<div class="tooltip" id="tooltip" role="tooltip"></div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-const METRIC_COLORS = {
-    'BLOSUM62':       '#0071e3',
-    'K-mer (k=3)':    '#34c759',
-    'Edit distance':  '#ff3b30',
-    'Motif (JASPAR)': '#ff9500',
+const $ = (id) => document.getElementById(id);
+const esc = GS.escape;
+const METRIC_META = {
+  blosum: { color: '#5A4BDB', label: 'BLOSUM62' },
+  kmer:   { color: '#0A9384', label: 'K-mer, k = 3' },
+  edit:   { color: '#E0512F', label: 'Edit distance' },
+  motif:  { color: '#D69E00', label: 'Motif, JASPAR' },
 };
+function metricKey(name) {
+  const n = String(name).toLowerCase();
+  if (n.startsWith('blosum')) return 'blosum';
+  if (n.startsWith('k-mer') || n.startsWith('kmer')) return 'kmer';
+  if (n.startsWith('edit')) return 'edit';
+  if (n.startsWith('motif')) return 'motif';
+  return null;
+}
+const meta = (name) => METRIC_META[metricKey(name)] || { color: '#66718A', label: name };
+let benchAbort = null;
 
+/* ---------- Formatting ---------- */
+function fmtMs(v) {
+  if (v === null || v === undefined || isNaN(v)) return '—';
+  if (v >= 100) return `${Math.round(v).toLocaleString('en-US')} ms`;
+  if (v >= 1) return `${v.toFixed(v >= 10 ? 1 : 2)} ms`;
+  if (v >= 0.001) return `${(v * 1000).toFixed(v >= 0.01 ? 0 : 1)} µs`;
+  return `${(v * 1e6).toFixed(0)} ns`;
+}
+function fmtX(x) {
+  if (x < 10) return `${x.toFixed(1)}×`;
+  return `${Math.round(x).toLocaleString('en-US')}×`;
+}
+function loadLevel(v) { return v >= 80 ? ['high', 'High'] : v >= 40 ? ['mid', 'Moderate'] : ['low', 'Low']; }
+
+/* ---------- Tooltip ---------- */
+function showTip(e, html, color) {
+  const t = $('tooltip');
+  t.innerHTML = html; t.style.setProperty('--c', color || '#fff');
+  t.classList.add('show');
+  const pad = 14, w = t.offsetWidth, h = t.offsetHeight;
+  let x = e.clientX + pad, y = e.clientY + pad;
+  if (x + w > window.innerWidth - 8) x = e.clientX - w - pad;
+  if (y + h > window.innerHeight - 8) y = e.clientY - h - pad;
+  t.style.left = x + 'px'; t.style.top = y + 'px';
+}
+function hideTip() { $('tooltip').classList.remove('show'); }
+
+/* ---------- History (kept in this browser) ---------- */
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem('genesim_benchmark_history') || '[]'); } catch (e) { return []; }
+}
+function saveRun(data) {
+  const entry = { at: Date.now(), data };
+  try {
+    const hist = loadHistory();
+    hist.unshift(entry);
+    localStorage.setItem('genesim_benchmark_history', JSON.stringify(hist.slice(0, 5)));
+    localStorage.setItem('genesim_last_benchmark', JSON.stringify(entry));
+  } catch (e) {}
+}
+function timeAgo(ts) {
+  const s = Math.round((Date.now() - ts) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return new Date(ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+function renderPrevRun() {
+  const hist = loadHistory();
+  const box = $('prev-run');
+  if (!hist.length) { box.classList.add('hidden'); return; }
+  const last = hist[0];
+  box.innerHTML = `Last run <b>${timeAgo(last.at)}</b>: ${last.data.pairs_tested} pairs in ${last.data.usage ? last.data.usage.wall_time_s + ' s' : 'unknown time'}. <a href="#" onclick="showLastRun(); return false;">Show it</a>`;
+  box.classList.remove('hidden');
+}
+function showLastRun() {
+  const hist = loadHistory();
+  if (!hist.length) return;
+  renderBenchmark(hist[0].data, hist[1] ? hist[1].data : null, hist[0].at);
+}
+
+/* ---------- Run ---------- */
 async function runBenchmark() {
-    const nPairs = parseInt(document.getElementById('n-pairs').value);
-    showDNA('Running benchmark...', `Testing ${nPairs} random gene pairs`);
-    document.getElementById('bench-btn').disabled = true;
-    document.getElementById('bench-results').classList.add('hidden');
-    document.getElementById('bench-empty').classList.add('hidden');
+  const nPairs = parseInt($('n-pairs').value, 10);
+  const controller = new AbortController();
+  benchAbort = controller;
+  GS.showDNA('Running benchmark', `Timing four metrics on ${nPairs} random gene pairs`, {
+    steps: [
+      { label: 'Pick random protein pairs', detail: 'One sequence per gene, fixed seed', color: 'var(--ink-4)' },
+      { label: 'Load promoter motif sets', detail: 'Cached JASPAR transcription factor sets for each gene', color: METRIC_META.motif.color },
+      { label: 'Time BLOSUM62, k-mer, edit distance and motif', detail: `${nPairs} comparisons each, wall and CPU time`, color: METRIC_META.blosum.color },
+      { label: 'Correlate every metric with BLOSUM62', color: 'var(--ink-4)' },
+    ],
+    hints: [{ after: 15000, text: 'Edit distance runs in pure Python, so long protein pairs take a while.' }],
+    onCancel: () => controller.abort()
+  });
+  $('bench-btn').disabled = true;
+  $('bench-error').classList.add('hidden');
 
-    try {
-        const resp = await fetch('/api/benchmark', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ n_pairs: nPairs })
-        });
-        const data = await resp.json();
-        hideDNA();
-        renderBenchmark(data);
-    } catch (e) {
-        hideDNA();
-        alert('Benchmark failed: ' + e.message);
-        document.getElementById('bench-empty').classList.remove('hidden');
-    } finally {
-        document.getElementById('bench-btn').disabled = false;
-    }
+  try {
+    const resp = await fetch('/api/benchmark', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ n_pairs: nPairs }),
+      signal: controller.signal
+    });
+    const data = await resp.json();
+    GS.hideDNA();
+    if (!resp.ok || !data.results) throw new Error(data.error || `The server answered ${resp.status}`);
+    const prev = loadHistory()[0];
+    saveRun(data);
+    renderBenchmark(data, prev ? prev.data : null, Date.now());
+    renderPrevRun();
+  } catch (e) {
+    GS.hideDNA();
+    const msg = e.name === 'AbortError'
+      ? 'Stopped waiting for the benchmark. The server may still be running it; you can run it again when it finishes.'
+      : `The benchmark failed: ${e.message}`;
+    $('bench-error-text').textContent = msg;
+    $('bench-error').className = e.name === 'AbortError' ? 'notice notice-warn' : 'notice notice-err';
+    if ($('bench-results').classList.contains('hidden')) $('bench-empty').classList.remove('hidden');
+  } finally {
+    $('bench-btn').disabled = false;
+    benchAbort = null;
+  }
 }
 
-function renderBenchmark(data) {
-    document.getElementById('bench-results').classList.remove('hidden');
+/* ---------- Render ---------- */
+function renderBenchmark(data, prev, at) {
+  $('bench-empty').classList.add('hidden');
+  $('bench-results').classList.remove('hidden');
+  const results = data.results || [];
+  const fastest = results.reduce((m, r) => (!m || r.avg_ms < m.avg_ms) ? r : m, null);
+  const slowest = results.reduce((m, r) => (!m || r.avg_ms > m.avg_ms) ? r : m, null);
+  const others = results.filter(r => metricKey(r.metric) !== 'blosum');
+  const closest = others.reduce((m, r) => (!m || r.corr > m.corr) ? r : m, null);
 
-    document.getElementById('bench-stats').innerHTML = `
-        <div class="stat-chip"><div class="stat-val">${data.pairs_tested}</div><div class="stat-label">Pairs tested</div></div>
-        <div class="stat-chip"><div class="stat-val">4</div><div class="stat-label">Metrics compared</div></div>
-    `;
+  const fact = (k, v) => `<div class="fact"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  $('bench-stats').innerHTML =
+    fact('Pairs tested', data.pairs_tested) +
+    fact('Metrics compared', results.length) +
+    (data.usage ? fact('Total run time', `${data.usage.wall_time_s}<small>s</small>`) : '') +
+    (fastest ? fact('Fastest', `<span class="dot" style="--c:${meta(fastest.metric).color}"></span>${esc(meta(fastest.metric).label)}`) : '') +
+    (closest ? fact('Closest to BLOSUM62', `<span class="dot" style="--c:${meta(closest.metric).color}"></span>${esc(meta(closest.metric).label)}`) : '');
 
-    if (data.cpu) {
-        const freq = data.cpu.freq_mhz ? `${(data.cpu.freq_mhz/1000).toFixed(2)} GHz` : 'n/a';
-        document.getElementById('cpu-info-body').innerHTML = `
-            <div><div class="text-muted" style="font-size:11px; text-transform:uppercase;">CPU</div><div style="font-weight:600;">${data.cpu.model}</div></div>
-            <div><div class="text-muted" style="font-size:11px; text-transform:uppercase;">Cores (physical / logical)</div><div style="font-weight:600;">${data.cpu.cores_physical} / ${data.cpu.cores_logical}</div></div>
-            <div><div class="text-muted" style="font-size:11px; text-transform:uppercase;">Clock Speed</div><div style="font-weight:600;">${freq}</div></div>
-            <div><div class="text-muted" style="font-size:11px; text-transform:uppercase;">OS / Python</div><div style="font-weight:600;">${data.cpu.os} · ${data.cpu.python_version}</div></div>
-        `;
+  $('table-sub').textContent = `${data.pairs_tested} pairs${at ? ', ' + timeAgo(at) : ''}`;
+
+  // Table (original columns plus speed ratio and change vs previous)
+  const maxTime = Math.max(...results.map(r => r.avg_ms));
+  const minTime = Math.max(1e-9, Math.min(...results.map(r => r.avg_ms)));
+  const prevMap = {};
+  if (prev && prev.results) prev.results.forEach(r => prevMap[r.metric] = r);
+  $('delta-head').classList.toggle('hidden', !prev);
+  $('bench-tbody').innerHTML = results.map(r => {
+    const m = meta(r.metric);
+    const isRef = metricKey(r.metric) === 'blosum';
+    const [corrCls, corrWord] = isRef ? ['', 'Reference'] : r.corr >= 0.8 ? ['ok', 'Strong'] : r.corr >= 0.5 ? ['warn', 'Moderate'] : ['weak', 'Weak'];
+    const corrColor = { ok: 'var(--ok)', warn: 'var(--ch-motif)', weak: 'var(--ink-4)', '': 'var(--ch-blosum)' }[corrCls];
+    const pct = Math.max(2, (r.avg_ms / maxTime) * 100);
+    const ratio = r.avg_ms / minTime;
+    let delta = '';
+    if (prev) {
+      const p = prevMap[r.metric];
+      if (p && p.avg_ms > 0) {
+        const ch = (r.avg_ms - p.avg_ms) / p.avg_ms * 100;
+        const cls = Math.abs(ch) < 5 ? 'same' : ch < 0 ? 'faster' : 'slower';
+        delta = `<span class="delta ${cls}" title="${cls === 'same' ? 'Within 5% of the previous run' : cls === 'faster' ? 'Faster than the previous run' : 'Slower than the previous run'}">${cls === 'same' ? 'Same' : (ch > 0 ? '+' : '−') + Math.abs(ch).toFixed(0) + '%'}</span>`;
+      } else delta = '<span class="delta same">New</span>';
     }
+    return `<tr>
+      <td><span class="m-name" style="--c:${m.color}"><i></i>${esc(r.metric)}</span></td>
+      <td class="r num">${r.avg_ms.toFixed(3)} ms</td>
+      <td class="r num">${r.avg_cpu_ms.toFixed(3)} ms</td>
+      <td class="r num muted">${r.min_ms.toFixed(3)}</td>
+      <td class="r num muted">${r.max_ms.toFixed(3)}</td>
+      <td class="r"><span class="num">${r.corr.toFixed(4)}</span> <span class="corr-tag" style="--s:${corrColor}">${corrWord}</span></td>
+      <td><div class="rel" style="--c:${m.color}"><span class="track"><i style="width:${pct}%"></i></span><span class="x">${r === fastest ? 'Fastest' : fmtX(ratio)}</span></div></td>
+      ${prev ? `<td class="r">${delta}</td>` : ''}
+    </tr>`;
+  }).join('');
 
-    if (data.usage) {
-        const u = data.usage;
-        const pctColor = v => v >= 80 ? 'var(--red)' : v >= 40 ? 'var(--orange)' : 'var(--green)';
-        document.getElementById('cpu-usage-body').innerHTML = `
-            <div><div class="text-muted" style="font-size:11px; text-transform:uppercase;">Process CPU %</div><div style="font-weight:600; color:${pctColor(u.process_cpu_percent)}">${u.process_cpu_percent}%</div></div>
-            <div><div class="text-muted" style="font-size:11px; text-transform:uppercase;">System CPU %</div><div style="font-weight:600; color:${pctColor(u.system_cpu_percent)}">${u.system_cpu_percent}%</div></div>
-            <div><div class="text-muted" style="font-size:11px; text-transform:uppercase;">Memory Used</div><div style="font-weight:600;">${u.memory_mb} MB <span class="text-muted" style="font-weight:400;">(+${u.memory_delta_mb} MB)</span></div></div>
-            <div><div class="text-muted" style="font-size:11px; text-transform:uppercase;">Total Run Time</div><div style="font-weight:600;">${u.wall_time_s}s</div></div>
-        `;
-    }
+  // Machine
+  if (data.cpu) {
+    const c = data.cpu;
+    const freq = c.freq_mhz ? `${(c.freq_mhz / 1000).toFixed(2)} GHz` : 'n/a';
+    const kv = (k, v, title) => `<div><div class="k">${k}</div><div class="v" title="${esc(title || '')}">${v}</div></div>`;
+    $('cpu-info-body').innerHTML =
+      kv('CPU', esc(c.model), c.model) +
+      kv('Cores', `${c.cores_physical}<small>physical</small> ${c.cores_logical}<small>logical</small>`) +
+      kv('Clock speed', freq) +
+      kv('Architecture', esc(c.architecture || '—')) +
+      kv('Operating system', esc(c.os), c.os) +
+      kv('Python', esc(c.python_version));
+  }
+  if (data.usage) {
+    const u = data.usage;
+    const kv = (k, v) => `<div><div class="k">${k}</div><div class="v">${v}</div></div>`;
+    const pct = (v) => { const [cls, word] = loadLevel(v); return `${v}%<span class="status ${cls}">${word}</span>`; };
+    $('cpu-usage-body').innerHTML =
+      kv('Process CPU', pct(u.process_cpu_percent)) +
+      kv('System CPU', pct(u.system_cpu_percent)) +
+      kv('Memory used', `${u.memory_mb} MB<small>${u.memory_delta_mb >= 0 ? '+' : ''}${u.memory_delta_mb} MB</small>`) +
+      kv('Total run time', `${u.wall_time_s} s`);
+  }
 
-    const maxTime = Math.max(...data.results.map(r => r.avg_ms));
-
-    document.getElementById('bench-tbody').innerHTML = data.results.map(r => {
-        const color = METRIC_COLORS[r.metric] || '#6e6e73';
-        const corrColor = r.corr >= 0.8 ? 'var(--green)' : r.corr >= 0.5 ? 'var(--orange)' : 'var(--text-muted)';
-        const pct = Math.max(2, (r.avg_ms / maxTime) * 100);
-
-        return `<tr>
-            <td><span style="color:${color}; font-weight:600">${r.metric}</span></td>
-            <td class="text-mono text-sm">${r.avg_ms.toFixed(3)} ms</td>
-            <td class="text-mono text-sm">${r.avg_cpu_ms.toFixed(3)} ms</td>
-            <td class="text-mono text-sm text-muted">${r.min_ms.toFixed(3)}</td>
-            <td class="text-mono text-sm text-muted">${r.max_ms.toFixed(3)}</td>
-            <td><span class="text-mono" style="color:${corrColor}; font-weight:600">${r.corr.toFixed(4)}</span></td>
-            <td style="min-width:140px;">
-                <div style="background:var(--border-light); border-radius:3px; height:6px; overflow:hidden;">
-                    <div style="width:${pct}%; height:100%; background:${color}; border-radius:3px; transition:width 0.5s ease;"></div>
-                </div>
-            </td>
-        </tr>`;
-    }).join('');
+  drawSpeed(results, prev);
+  drawCorr(results);
 }
+
+/* ---------- Charts ---------- */
+function drawSpeed(results, prev) {
+  const host = $('speed-chart');
+  const W = Math.max(360, host.clientWidth - 40), rowH = 46, top = 6, labelW = 118, rightPad = 74;
+  const H = top + results.length * rowH + 30;
+  const prevMap = {};
+  if (prev && prev.results) prev.results.forEach(r => prevMap[r.metric] = r);
+  const vals = results.flatMap(r => [r.min_ms, r.max_ms, r.avg_ms]).concat(Object.values(prevMap).map(r => r.avg_ms)).filter(v => v > 0);
+  let lo = Math.floor(Math.log10(Math.min(...vals))), hi = Math.ceil(Math.log10(Math.max(...vals)));
+  if (hi === lo) hi = lo + 1;
+  const x = (v) => labelW + (Math.log10(Math.max(v, 10 ** lo)) - lo) / (hi - lo) * (W - labelW - rightPad);
+  const tickLabel = (p) => p >= 3 ? `${10 ** (p - 3)} s` : p >= 0 ? `${10 ** p} ms` : p >= -3 ? `${Math.round(10 ** (p + 3))} µs` : `${Math.round(10 ** (p + 6))} ns`;
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Average, minimum and maximum time per comparison for each metric, log scale">`;
+  for (let p = lo; p <= hi; p++) {
+    const xx = x(10 ** p);
+    svg += `<line class="grid" x1="${xx}" x2="${xx}" y1="${top}" y2="${H - 24}"/>`;
+    svg += `<text class="axis-label" x="${xx}" y="${H - 8}" text-anchor="middle">${tickLabel(p)}</text>`;
+  }
+  results.forEach((r, i) => {
+    const m = meta(r.metric);
+    const cy = top + i * rowH + rowH / 2;
+    const x0 = x(Math.max(r.min_ms, 10 ** lo)), x1 = x(r.max_ms), xa = x(r.avg_ms);
+    svg += `<text class="row-label" x="0" y="${cy + 4}">${esc(m.label)}</text>`;
+    svg += `<line x1="${x0}" x2="${x1}" y1="${cy}" y2="${cy}" stroke="${m.color}" stroke-opacity=".35" stroke-width="4" stroke-linecap="round"/>`;
+    const p = prevMap[r.metric];
+    if (p && p.avg_ms > 0) svg += `<circle cx="${x(p.avg_ms)}" cy="${cy}" r="6" fill="#fff" stroke="#98A1B3" stroke-width="2"/>`;
+    svg += `<circle cx="${xa}" cy="${cy}" r="7" fill="${m.color}" stroke="#fff" stroke-width="2"/>`;
+    svg += `<text class="val-label" x="${Math.max(x1, xa) + 12}" y="${cy + 4}">${fmtMs(r.avg_ms)}</text>`;
+    svg += `<rect class="hit" x="0" y="${cy - rowH / 2}" width="${W}" height="${rowH}" data-i="${i}"/>`;
+  });
+  svg += '</svg>';
+  host.innerHTML = svg;
+  $('speed-legend').innerHTML = `<span><i class="sw-dot"></i>Average</span><span><i class="sw-range"></i>Min to max</span>${Object.keys(prevMap).length ? '<span><i class="sw-ring"></i>Previous run</span>' : ''}`;
+  host.querySelectorAll('.hit').forEach(el => {
+    el.addEventListener('mousemove', (e) => {
+      const r = results[+el.dataset.i], m = meta(r.metric), p = prevMap[r.metric];
+      showTip(e, `<div class="tt-h"><i></i>${esc(r.metric)}</div>
+        <div class="tt-r">Average<b>${fmtMs(r.avg_ms)}</b></div>
+        <div class="tt-r">Min to max<b>${fmtMs(r.min_ms)} to ${fmtMs(r.max_ms)}</b></div>
+        <div class="tt-r">Average CPU<b>${fmtMs(r.avg_cpu_ms)}</b></div>
+        ${p ? `<div class="tt-r">Previous average<b>${fmtMs(p.avg_ms)}</b></div>` : ''}`, m.color);
+    });
+    el.addEventListener('mouseleave', hideTip);
+  });
+}
+
+function drawCorr(results) {
+  const host = $('corr-chart');
+  const W = Math.max(320, host.clientWidth - 40), rowH = 46, top = 6, labelW = 118, rightPad = 100;
+  const H = top + results.length * rowH + 30;
+  const x = (v) => labelW + (v + 1) / 2 * (W - labelW - rightPad);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Pearson correlation of each metric with BLOSUM62">`;
+  for (const t of [-1, -0.5, 0, 0.5, 1]) {
+    svg += `<line class="${t === 0 ? 'zero' : 'grid'}" x1="${x(t)}" x2="${x(t)}" y1="${top}" y2="${H - 24}"/>`;
+    svg += `<text class="axis-label" x="${x(t)}" y="${H - 8}" text-anchor="middle">${t === 0 ? '0' : t.toFixed(1)}</text>`;
+  }
+  svg += `<defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#F0EEFD"/><line x1="0" y1="0" x2="0" y2="6" stroke="#5A4BDB" stroke-opacity=".45" stroke-width="2"/></pattern></defs>`;
+  results.forEach((r, i) => {
+    const m = meta(r.metric);
+    const isRef = metricKey(r.metric) === 'blosum';
+    const cy = top + i * rowH + rowH / 2;
+    const v = isNaN(r.corr) ? 0 : Math.max(-1, Math.min(1, r.corr));
+    const xa = x(0), xb = x(v);
+    const bx = Math.min(xa, xb), bw = Math.max(2, Math.abs(xb - xa));
+    svg += `<text class="row-label" x="0" y="${cy + 4}">${esc(m.label)}</text>`;
+    svg += `<rect x="${bx}" y="${cy - 9}" width="${bw}" height="18" rx="4" fill="${isRef ? 'url(#hatch)' : m.color}"/>`;
+    const lx = v >= 0 ? xb + 8 : xb - 8;
+    svg += `<text class="val-label" x="${lx}" y="${cy + 4}" text-anchor="${v >= 0 ? 'start' : 'end'}">${isRef ? '1.00, reference' : v.toFixed(2)}</text>`;
+    svg += `<rect class="hit" x="0" y="${cy - rowH / 2}" width="${W}" height="${rowH}" data-i="${i}"/>`;
+  });
+  svg += '</svg>';
+  host.innerHTML = svg;
+  host.querySelectorAll('.hit').forEach(el => {
+    el.addEventListener('mousemove', (e) => {
+      const r = results[+el.dataset.i], m = meta(r.metric);
+      const isRef = metricKey(r.metric) === 'blosum';
+      showTip(e, `<div class="tt-h"><i></i>${esc(r.metric)}</div>
+        <div class="tt-r">Pearson r<b>${r.corr.toFixed(4)}</b></div>
+        <div class="tt-r">${isRef ? 'The reference metric' : r.corr >= 0.8 ? 'Ranks pairs much like alignment' : r.corr >= 0.5 ? 'Partly agrees with alignment' : 'Captures something different'}</div>`, m.color);
+    });
+    el.addEventListener('mouseleave', hideTip);
+  });
+}
+
+/* ---------- Wiring ---------- */
+function updateSlider() {
+  const r = $('n-pairs');
+  r.style.setProperty('--pct', ((r.value - r.min) / (r.max - r.min)) * 100 + '%');
+  $('pairs-val').textContent = r.value;
+}
+$('n-pairs').addEventListener('input', updateSlider);
+updateSlider();
+renderPrevRun();
+let rt = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(rt);
+  rt = setTimeout(() => { const h = loadHistory(); if (!$('bench-results').classList.contains('hidden') && h.length) { drawSpeed(window.__lastResults || h[0].data.results, window.__lastPrev || null); drawCorr(window.__lastResults || h[0].data.results); } }, 150);
+});
+const _render = renderBenchmark;
+renderBenchmark = function (data, prev, at) { window.__lastResults = data.results; window.__lastPrev = prev; _render(data, prev, at); };
 </script>
 {% endblock %}
