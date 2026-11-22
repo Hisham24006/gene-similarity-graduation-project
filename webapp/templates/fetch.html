@@ -334,7 +334,7 @@
       <div class="side-stack">
         <div class="panel cta-panel">
           <div class="t">Ready for similarity search</div>
-          <div class="d" id="cta-text">Compare this sequence against 20,000 human genes using BLOSUM62, k-mer, edit distance and motif similarity.</div>
+          <div class="d" id="cta-text">Compare this sequence against 18,000+ human genes using BLOSUM62, k-mer, edit distance and motif similarity.</div>
           <button class="btn btn-lg" onclick="proceedToSearch()">
             <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>Use in similarity search
           </button>
@@ -660,7 +660,7 @@ function renderFetchedResult(data) {
   $('comp-sub').textContent = isDna ? 'Share of bases' : 'By chemical class';
   $('comp-list').innerHTML = compositionHTML(seq, isDna);
 
-  $('cta-text').innerHTML = `Compare ${esc(data.symbol)} against 20,000 human genes. It opens in the ${isDna ? 'Nucleotide' : 'Protein'} tab with <span class="mono">&gt;${esc(data.symbol)}</span> as the header, so motif scoring can find its promoter.`;
+  $('cta-text').innerHTML = `Compare ${esc(data.symbol)} against 18,000+ human genes. It opens in the ${isDna ? 'Nucleotide' : 'Protein'} tab with <span class="mono">&gt;${esc(data.symbol)}</span> as the header, so motif scoring can find its promoter.`;
 
   $('fetch-result-content').classList.remove('hidden');
   $('fetch-empty').classList.add('hidden');
