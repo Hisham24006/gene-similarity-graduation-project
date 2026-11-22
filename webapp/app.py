@@ -43,7 +43,8 @@ from metrics import (
     blosum_similarity,
     dna_similarity,
     get_protein_aligner,
-    dna_aligner
+    dna_aligner,
+    for_blosum
 )
 from motif_similarity import (
     load_jaspar_motifs,
@@ -499,7 +500,10 @@ def api_search():
         top_seq = db.get_isoform_sequence(top['gene'], actual_mode, top['isoform'])
         db.close()
         if top_seq:
-            aln = (protein_aligner if actual_mode == 'protein' else dna_aligner).align(query_seq, top_seq)
+            if actual_mode == 'protein':
+                aln = protein_aligner.align(for_blosum(query_seq), for_blosum(top_seq))
+            else:
+                aln = dna_aligner.align(query_seq, top_seq)
             alignment_text = str(aln[0])
 
     return jsonify({

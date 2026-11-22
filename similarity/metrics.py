@@ -23,6 +23,18 @@ from config import DEFAULT_GAP_COST
 BLOSUM62 = substitution_matrices.load("BLOSUM62")
 
 
+def for_blosum(seq):
+    """
+    Makes a protein sequence safe for the BLOSUM62 aligner.
+
+    BLOSUM62 has no row for U (selenocysteine), and Biopython raises
+    "sequence contains letters not in the alphabet" on it. Selenoproteins
+    such as TXNRD1, GPX1 and GPX4 contain U, so it is scored as C
+    (cysteine), its closest standard amino acid.
+    """
+    return seq.replace('U', 'C').replace('u', 'c')
+
+
 @lru_cache(maxsize=None)
 def get_protein_aligner(existence=DEFAULT_GAP_COST[0], extension=DEFAULT_GAP_COST[1]):
     """
@@ -63,6 +75,7 @@ def blosum_similarity(seq_a, seq_b, aligner=None):
     Pass an aligner from get_protein_aligner() to use other gap costs.
     """
     aligner = aligner or protein_aligner
+    seq_a, seq_b = for_blosum(seq_a), for_blosum(seq_b)
     score = aligner.score(seq_a, seq_b)
     mx = aligner.score(seq_a, seq_a)
     return max(0.0, score / mx) if mx > 0 else 0.0

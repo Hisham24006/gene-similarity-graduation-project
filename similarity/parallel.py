@@ -17,7 +17,7 @@ import sys
 import threading
 from concurrent.futures import ProcessPoolExecutor
 
-from metrics import get_protein_aligner, dna_aligner, edit_distance_similarity
+from metrics import get_protein_aligner, dna_aligner, edit_distance_similarity, for_blosum
 
 # Below this many comparisons the pool overhead is not worth it.
 MIN_PARALLEL = 8
@@ -97,6 +97,9 @@ def _run(fn, tasks):
         # A broken pool (e.g. a worker crashed) should not break the search.
         print(f"  [parallel] Pool failed ({e}); running serially.")
         with _pool_lock:
+            # Stop the old workers so they are not left running.
+            if _pool is not None:
+                _pool.shutdown(wait=False, cancel_futures=True)
             _pool = None
         return [fn(t) for t in tasks]
 
@@ -121,6 +124,7 @@ def alignment_similarities(query, seqs, mode='protein', gap_cost=(11, 1)):
     """
     if mode == 'protein':
         aligner = get_protein_aligner(*gap_cost)
+        query, seqs = for_blosum(query), [for_blosum(s) for s in seqs]
         fn, tasks = _protein_score, [(query, s, tuple(gap_cost)) for s in seqs]
     else:
         aligner = dna_aligner

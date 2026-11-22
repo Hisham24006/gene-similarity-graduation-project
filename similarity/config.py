@@ -48,6 +48,7 @@ BLOSUM62_GAP_COSTS = [
 ]
 DEFAULT_GAP_COST = (11, 1)  # NCBI BLAST default for BLOSUM62
 
-VALID_AA = set("ACDEFGHIKLMNPQRSTVWYacdefghiklmnpqrstvwy")
+# U = selenocysteine (e.g. TXNRD1, GPX1); scored as C by metrics.for_blosum
+VALID_AA = set("ACDEFGHIKLMNPQRSTUVWYacdefghiklmnpqrstuvwy")
 VALID_DNA = set("ATGCatgcNn")
 

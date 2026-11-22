@@ -10,7 +10,8 @@ from metrics import (
     kmer_similarity,
     edit_distance_similarity,
     blosum_similarity,
-    protein_aligner
+    protein_aligner,
+    for_blosum
 )
 from fetcher import fetch_from_ncbi
 from visualizer import plot_bar_chart, plot_heatmap
@@ -177,7 +178,7 @@ if __name__ == "__main__":
             print(f"  Motif   : {best_motif:.4f}")
             print(f"\n--- Alignment ---")
             best_seq = db.get_isoform_sequence(best_symbol, "protein", best_isoform)
-            print(protein_aligner.align(query_seq, best_seq)[0])
+            print(protein_aligner.align(for_blosum(query_seq), for_blosum(best_seq))[0])
 
         # --- Visualizations ---
         print(f"\n--- Generating visualizations ---")
