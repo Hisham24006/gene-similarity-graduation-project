@@ -30,6 +30,9 @@ from config import (
     RECENT_SEARCHES_PATH as RECENT_SEARCHES,
     KMER_K,
     KMER_K_DNA,
+    PROTEIN_CANDIDATES,
+    DNA_FILTER_K,
+    DNA_CANDIDATES,
     VALID_AA,
     VALID_DNA,
     BLOSUM62_GAP_COSTS,
@@ -60,7 +63,7 @@ from fetcher import (
     detect_accession
 )
 from visualizer import plot_bar_chart, plot_heatmap
-from kmer_index import get_candidate_sequences, get_search_index
+from kmer_index import get_candidate_sequences, get_search_index, get_dna_candidates, get_dna_index
 from parallel import alignment_similarities, edit_similarities, warm_up
 
 app = Flask(__name__)
@@ -83,14 +86,21 @@ def get_promoter_tfs(symbol):
     return cached_scan_motifs(symbol, promoter, BIO_MOTIFS) if promoter else set()
 
 
+def mrna_rows(rows):
+    """Nucleotide rows without the Ensembl genomic gene sequences (ENSG...)."""
+    return [s for s in rows if not s[1].startswith('ENSG')]
+
+
 def warm_up_index():
-    """Builds the protein k-mer index at start-up so the first search is fast."""
+    """Builds the protein and nucleotide k-mer indexes at start-up so the first search is fast."""
     try:
         db = GeneDatabase(db_path=DB_PATH)
-        rows = db.get_all_sequences_with_isoform('protein')
+        protein_rows = db.get_all_sequences_with_isoform('protein')
+        dna_rows = db.get_all_sequences_with_isoform('dna')
         db.close()
-        get_search_index(rows, KMER_K)
-        print("K-mer index ready.")
+        get_search_index(protein_rows, KMER_K)
+        get_dna_index(mrna_rows(dna_rows), DNA_FILTER_K)
+        print("K-mer indexes ready.")
     except Exception as e:
         print(f"K-mer index warm-up failed ({e}); the first search will build it.")
 
@@ -189,7 +199,10 @@ def index():
         gap_costs=BLOSUM62_GAP_COSTS,
         default_gap_cost=DEFAULT_GAP_COST,
         kmer_k=KMER_K,
-        kmer_k_dna=KMER_K_DNA
+        kmer_k_dna=KMER_K_DNA,
+        protein_candidates=PROTEIN_CANDIDATES,
+        dna_filter_k=DNA_FILTER_K,
+        dna_candidates=DNA_CANDIDATES
     )
 
 
@@ -407,23 +420,27 @@ def api_search():
     # not being comparable to mRNA queries. Leave them out unless asked for.
     include_genomic = bool(data.get('include_genomic', False))
     if actual_mode == 'dna' and not include_genomic:
-        all_seqs = [s for s in all_seqs if not s[1].startswith('ENSG')]
+        all_seqs = mrna_rows(all_seqs)
 
     if not all_seqs:
         return jsonify({'error': f'No {actual_mode} sequences found in database.'}), 400
 
-    # Apply k-mer candidate filtering to protein searches only. The k-mer
-    # index is built once and reused (see kmer_index.get_search_index), and
-    # candidates are ranked by Jaccard so very long proteins do not crowd out
-    # the real relatives.
-    candidate_seqs = all_seqs
-
+    # Stage 1: a k-mer filter keeps the candidates most similar to the query
+    # (Jaccard of their k-mer sets); only these are scored in stage 2. Both
+    # indexes are built once and reused (see kmer_index.py).
     if actual_mode == 'protein':
         candidate_seqs = get_candidate_sequences(
             query_seq,
             all_seqs,
             k=KMER_K,
-            top_n=80
+            top_n=PROTEIN_CANDIDATES
+        )
+    else:
+        candidate_seqs = get_dna_candidates(
+            query_seq,
+            all_seqs,
+            k=DNA_FILTER_K,
+            top_n=DNA_CANDIDATES
         )
 
     # ── Motif TF sets ──

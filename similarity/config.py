@@ -36,6 +36,15 @@ Entrez.email = ENTREZ_EMAIL
 
 KMER_K = 3      # protein k-mers (20^3 = 8,000 possible 3-mers)
 KMER_K_DNA = 7  # nucleotide k-mers (4^7 = 16,384 possible; 4^3 = 64 is too few)
+
+# Two-stage search: a k-mer filter keeps this many candidates, and only they
+# are scored with the selected metrics (see kmer_index.py).
+PROTEIN_CANDIDATES = 80
+# 8-mers (65,536 possible) separate relatives far better than 7-mers: an mRNA
+# contains about a fifth of all 7-mers, so unrelated mRNAs share many by chance.
+# On 12 test queries, 500 candidates kept 13 of the 14 hits scoring >= 0.1.
+DNA_FILTER_K = 8          # k-mer size of the nucleotide filter index
+DNA_CANDIDATES = 500
 PROMOTER_BP = 1000
 PSEUDOCOUNT = 0.5
 SCORE_THRESHOLD_FRACTION = 0.80

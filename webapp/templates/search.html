@@ -767,14 +767,14 @@ tbody tr:hover td.chev { color: var(--ink-2); }
 const MODES = {
   protein: {
     name: 'Protein', alignLabel: 'BLOSUM62 alignment', alignShort: 'BLOSUM62', rankAlign: 'Alignment',
-    kmerK: {{ kmer_k }}, unit: 'aa',
+    kmerK: {{ kmer_k }}, unit: 'aa', filterK: {{ kmer_k }}, candidates: {{ protein_candidates }},
     inputLabel: 'Amino-acid sequence, plain or FASTA',
     alignDesc: 'Local alignment scored by how often amino acids substitute for each other.',
     alignSpeed: 'Slowest', editSpeed: 'Moderate', editSpeedV: 2,
   },
   dna: {
     name: 'Nucleotide', alignLabel: 'DNA alignment', alignShort: 'DNA alignment', rankAlign: 'Alignment',
-    kmerK: {{ kmer_k_dna }}, unit: 'bp',
+    kmerK: {{ kmer_k_dna }}, unit: 'bp', filterK: {{ dna_filter_k }}, candidates: {{ dna_candidates }},
     inputLabel: 'Nucleotide sequence (A, C, G, T, N), plain or FASTA',
     alignDesc: 'Local alignment: match +2, mismatch −3, gap open −5, gap extend −2.',
     alignSpeed: 'Slowest', editSpeed: 'Very slow', editSpeedV: 1,
@@ -1244,10 +1244,12 @@ async function loadById(id, mode, { quietErrors = false } = {}) {
    --------------------------------------------------------------------------- */
 function pipelineSteps(mode, metrics, label, includeGenomic) {
   const steps = [];
+  const cfg = MODES[mode];
   if (mode === 'protein') {
-    steps.push({ label: 'Pre-filter candidates', detail: `${MODES.protein.kmerK}-mer index keeps the 80 closest protein isoforms`, color: 'var(--ink-4)' });
+    steps.push({ label: 'Pre-filter candidates', detail: `${cfg.filterK}-mer index keeps the ${cfg.candidates} closest protein isoforms`, color: 'var(--ink-4)' });
   } else {
-    steps.push({ label: 'Load nucleotide sequences', detail: includeGenomic ? 'mRNAs and genomic gene sequences' : 'mRNAs only, genomic sequences excluded', color: 'var(--ink-4)' });
+    const pool = includeGenomic ? 'mRNAs and genomic gene sequences' : 'mRNAs';
+    steps.push({ label: 'Pre-filter candidates', detail: `${cfg.filterK}-mer index keeps the ${cfg.candidates} closest ${pool}`, color: 'var(--ink-4)' });
   }
   if (metrics.includes('blosum')) steps.push({ label: mode === 'dna' ? 'DNA local alignment' : 'BLOSUM62 local alignment', detail: 'Runs in parallel across CPU cores', color: METRIC_HEX.blosum });
   if (metrics.includes('kmer'))   steps.push({ label: `K-mer similarity, k = ${MODES[mode].kmerK}`, detail: 'Jaccard index of shared words', color: METRIC_HEX.kmer });
@@ -1286,7 +1288,7 @@ async function runSearch() {
   const controller = new AbortController();
   searchAbort = controller;
   const hints = [{ after: 12000, text: 'Alignment-based metrics take longer on long sequences.' }];
-  if (mode === 'dna') hints.push({ after: 25000, text: 'Nucleotide searches compare full-length mRNAs, so they can take several minutes, especially with edit distance.' });
+  if (mode === 'dna') hints.push({ after: 25000, text: 'Long nucleotide queries take longer, and edit distance on mRNAs can take several minutes.' });
 
   GS.showDNA(
     `Running ${MODES[mode].name.toLowerCase()} similarity search`,
