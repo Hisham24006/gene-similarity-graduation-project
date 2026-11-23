@@ -366,6 +366,10 @@ def api_search():
             isoform_id = 'custom'
             query_label = 'custom_sequence'
 
+        # Many protein FASTA files end with '*' for the stop codon
+        if requested_mode != 'dna':
+            query_seq = query_seq.rstrip('*')
+
         if not query_seq:
             return jsonify({'error': 'The sequence is empty.'}), 400
 

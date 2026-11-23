@@ -78,6 +78,7 @@
 .colored .r-gly { color: #A87406; }
 .colored .r-pro { color: #7B6C0C; }
 .colored .r-aro { color: #0A8590; }
+.colored .r-amb { color: var(--ink-4); }
 .colored .n-a { color: #0A8A7C; }
 .colored .n-c { color: #4F41CF; }
 .colored .n-g { color: #B07208; }
@@ -779,7 +780,9 @@ const MODES = {
     alignSpeed: 'Slowest', editSpeed: 'Very slow', editSpeedV: 1,
   },
 };
-const VALID_AA  = /^[ACDEFGHIKLMNPQRSTVWY]*$/;
+// Standard amino acids, U (selenocysteine), ambiguity codes X/B/Z, and an
+// optional trailing '*' (stop). Must match VALID_AA in similarity/config.py.
+const VALID_AA  = /^[ACDEFGHIKLMNPQRSTUVWYXBZ]*\*?$/;
 const VALID_NUC = /^[ACGTN]*$/;
 const METRIC_ORDER = ['blosum', 'kmer', 'edit', 'motif'];
 const METRIC_COLOR = { blosum: 'var(--ch-blosum)', kmer: 'var(--ch-kmer)', edit: 'var(--ch-edit)', motif: 'var(--ch-motif)' };
@@ -1005,6 +1008,8 @@ const AA_CLASS = {};
 'DE'.split('').forEach(c => AA_CLASS[c] = 'r-neg');
 'NQST'.split('').forEach(c => AA_CLASS[c] = 'r-pol');
 AA_CLASS.C = 'r-cys'; AA_CLASS.G = 'r-gly'; AA_CLASS.P = 'r-pro'; AA_CLASS.H = 'r-aro'; AA_CLASS.Y = 'r-aro';
+AA_CLASS.U = 'r-cys';  // selenocysteine, scored as C
+'XBZ'.split('').forEach(c => AA_CLASS[c] = 'r-amb');  // '*' is handled in renderMirror
 const NT_CLASS = { A: 'n-a', C: 'n-c', G: 'n-g', T: 'n-t', N: 'n-n' };
 let mirrorQueued = false;
 
@@ -1020,14 +1025,20 @@ function renderMirror() {
   const text = ta.value;
   if (text.length > 120000) { mirror.textContent = text + '\n'; return; }
   const lines = text.split('\n');
-  let html = '';
+  // A protein may end with one '*' (stop); anywhere else it is an error
+  const stopAt = currentMode === 'protein' && /\*\s*$/.test(text) ? text.trimEnd().length - 1 : -1;
+  let html = '', offset = 0;
   lines.forEach((line, li) => {
-    if (li > 0) html += '\n';
+    if (li > 0) { html += '\n'; offset++; }
+    const lineStart = offset;
+    offset += line.length;
     if (line.trimStart().startsWith('>')) { html += `<span class="h">${esc(line)}</span>`; return; }
-    let run = '', cls = null;
+    let run = '', cls = null, i = 0;
     const flush = () => { if (run) { html += cls ? `<span class="${cls}">${esc(run)}</span>` : esc(run); } run = ''; };
     for (const ch of line) {
-      const c = /\s/.test(ch) ? null : residueClass(ch);
+      const pos = lineStart + i;
+      i += ch.length;
+      const c = /\s/.test(ch) ? null : (ch === '*' && pos === stopAt ? 'r-amb' : residueClass(ch));
       if (c !== cls) { flush(); cls = c; }
       run += ch;
     }
