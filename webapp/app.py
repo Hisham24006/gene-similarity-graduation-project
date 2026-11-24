@@ -31,7 +31,10 @@ from config import (
     KMER_K,
     KMER_K_DNA,
     PROTEIN_CANDIDATES,
+    PROTEIN_FILTER_K,
+    PROTEIN_FILTER_K_RANGE,
     DNA_FILTER_K,
+    DNA_FILTER_K_RANGE,
     DNA_CANDIDATES,
     VALID_AA,
     VALID_DNA,
@@ -98,7 +101,7 @@ def warm_up_index():
         protein_rows = db.get_all_sequences_with_isoform('protein')
         dna_rows = db.get_all_sequences_with_isoform('dna')
         db.close()
-        get_search_index(protein_rows, KMER_K)
+        get_search_index(protein_rows, PROTEIN_FILTER_K)
         get_dna_index(mrna_rows(dna_rows), DNA_FILTER_K)
         print("K-mer indexes ready.")
     except Exception as e:
@@ -201,7 +204,10 @@ def index():
         kmer_k=KMER_K,
         kmer_k_dna=KMER_K_DNA,
         protein_candidates=PROTEIN_CANDIDATES,
+        protein_filter_k=PROTEIN_FILTER_K,
+        protein_filter_k_range=PROTEIN_FILTER_K_RANGE,
         dna_filter_k=DNA_FILTER_K,
+        dna_filter_k_range=DNA_FILTER_K_RANGE,
         dna_candidates=DNA_CANDIDATES
     )
 
@@ -355,6 +361,12 @@ def api_search():
         return jsonify({'error': f'Unsupported gap costs {gap_cost[0]}/{gap_cost[1]}.'}), 400
     protein_aligner = get_protein_aligner(*gap_cost)
 
+    # K-mer pre-filter: on by default. Its k is checked once the sequence
+    # type is known, because the protein and nucleotide indexes allow
+    # different ranges.
+    use_prefilter = bool(data.get('prefilter', True))
+    filter_k_raw = data.get('filter_k')
+
     # ── Get query sequence ──
     if input_type == 'gene_name':
         gene_name = data.get('gene_name', '').upper().strip()
@@ -426,20 +438,37 @@ def api_search():
         return jsonify({'error': f'No {actual_mode} sequences found in database.'}), 400
 
     # Stage 1: a k-mer filter keeps the candidates most similar to the query
-    # (Jaccard of their k-mer sets); only these are scored in stage 2. Both
-    # indexes are built once and reused (see kmer_index.py).
+    # (Jaccard of their k-mer sets); only these are scored in stage 2. Each
+    # index is built once per k and reused (see kmer_index.py). With the
+    # filter off, every sequence is scored: exhaustive, but much slower.
     if actual_mode == 'protein':
+        default_k, (k_min, k_max) = PROTEIN_FILTER_K, PROTEIN_FILTER_K_RANGE
+    else:
+        default_k, (k_min, k_max) = DNA_FILTER_K, DNA_FILTER_K_RANGE
+    try:
+        filter_k = default_k if filter_k_raw in (None, '') else int(filter_k_raw)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'The pre-filter k must be a whole number.'}), 400
+    if use_prefilter and not k_min <= filter_k <= k_max:
+        return jsonify({'error': (
+            f'The {"protein" if actual_mode == "protein" else "nucleotide"} '
+            f'pre-filter k must be between {k_min} and {k_max}.'
+        )}), 400
+
+    if not use_prefilter:
+        candidate_seqs = list(all_seqs)
+    elif actual_mode == 'protein':
         candidate_seqs = get_candidate_sequences(
             query_seq,
             all_seqs,
-            k=KMER_K,
+            k=filter_k,
             top_n=PROTEIN_CANDIDATES
         )
     else:
         candidate_seqs = get_dna_candidates(
             query_seq,
             all_seqs,
-            k=DNA_FILTER_K,
+            k=filter_k,
             top_n=DNA_CANDIDATES
         )
 
@@ -535,6 +564,11 @@ def api_search():
         'gap_costs':      list(gap_cost) if actual_mode == 'protein' else None,
         'kmer_k':         kmer_k,
         'total_compared': len(all_seqs),
+        'prefilter': {
+            'enabled': use_prefilter,
+            'k': filter_k if use_prefilter else None,
+            'scored': len(candidate_seqs),
+        },
         'include_genomic': include_genomic if actual_mode == 'dna' else None,
         'results':        results[:top_n],
         'alignment':      alignment_text,

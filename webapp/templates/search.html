@@ -581,6 +581,29 @@ tbody tr:hover td.chev { color: var(--ink-2); }
         </div>
       </div>
 
+      <!-- K-mer pre-filter (both tabs; each tab keeps its own settings) -->
+      <div class="cfg-section" id="prefilter-options">
+        <label class="switch-row" for="prefilter-toggle">
+          <span>
+            <span class="t">K-mer pre-filter</span>
+            <span class="hint" id="prefilter-hint" style="display:block; margin-top:2px;">Keeps the {{ protein_candidates }} sequences whose k-mers best match the query, then scores only those.</span>
+          </span>
+          <span class="switch"><input type="checkbox" id="prefilter-toggle" checked><span></span></span>
+        </label>
+        <div class="field" id="prefilter-k-field">
+          <label class="field-label" for="prefilter-k">Pre-filter k</label>
+          <div class="slider-row">
+            <input type="range" class="range" id="prefilter-k" min="{{ protein_filter_k_range[0] }}" max="{{ protein_filter_k_range[1] }}" value="{{ protein_filter_k }}" step="1" aria-describedby="prefilter-k-hint">
+            <output class="slider-val" id="prefilter-k-val" for="prefilter-k">{{ protein_filter_k }}</output>
+          </div>
+          <span class="hint" id="prefilter-k-hint">Larger k is stricter: fewer chance matches, but distant relatives may be missed.</span>
+        </div>
+        <div id="prefilter-warning" class="notice notice-warn hidden">
+          <svg viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          <div id="prefilter-warning-text">Every sequence in the database will be scored. This finds matches the filter might drop, but alignment and edit distance can take many minutes.</div>
+        </div>
+      </div>
+
       <!-- Protein-only options -->
       <div class="cfg-section" id="protein-options">
         <div class="field">
@@ -767,7 +790,8 @@ tbody tr:hover td.chev { color: var(--ink-2); }
 const MODES = {
   protein: {
     name: 'Protein', alignLabel: 'BLOSUM62 alignment', alignShort: 'BLOSUM62', rankAlign: 'Alignment',
-    kmerK: {{ kmer_k }}, unit: 'aa', filterK: {{ kmer_k }}, candidates: {{ protein_candidates }},
+    kmerK: {{ kmer_k }}, unit: 'aa', filterK: {{ protein_filter_k }}, candidates: {{ protein_candidates }},
+    filterKMin: {{ protein_filter_k_range[0] }}, filterKMax: {{ protein_filter_k_range[1] }}, alphabet: 20, pool: 'protein isoforms',
     inputLabel: 'Amino-acid sequence, plain or FASTA',
     alignDesc: 'Local alignment scored by how often amino acids substitute for each other.',
     alignSpeed: 'Slowest', editSpeed: 'Moderate', editSpeedV: 2,
@@ -775,10 +799,16 @@ const MODES = {
   dna: {
     name: 'Nucleotide', alignLabel: 'DNA alignment', alignShort: 'DNA alignment', rankAlign: 'Alignment',
     kmerK: {{ kmer_k_dna }}, unit: 'bp', filterK: {{ dna_filter_k }}, candidates: {{ dna_candidates }},
+    filterKMin: {{ dna_filter_k_range[0] }}, filterKMax: {{ dna_filter_k_range[1] }}, alphabet: 4, pool: 'mRNAs',
     inputLabel: 'Nucleotide sequence (A, C, G, T, N), plain or FASTA',
     alignDesc: 'Local alignment: match +2, mismatch −3, gap open −5, gap extend −2.',
     alignSpeed: 'Slowest', editSpeed: 'Very slow', editSpeedV: 1,
   },
+};
+// K-mer pre-filter settings, kept separately for each tab
+const prefilter = {
+  protein: { on: true, k: MODES.protein.filterK },
+  dna:     { on: true, k: MODES.dna.filterK },
 };
 // Standard amino acids, U (selenocysteine), ambiguity codes X/B/Z, and an
 // optional trailing '*' (stop). Must match VALID_AA in similarity/config.py.
@@ -878,6 +908,7 @@ function switchMode(mode) {
   $('label-kmer').textContent      = `K-mer, k = ${cfg.kmerK}`;
   $('speed-edit').textContent      = cfg.editSpeed;
   $('speed-edit-bars').dataset.v   = cfg.editSpeedV;
+  loadPrefilter(mode);
   $('protein-options').classList.toggle('hidden', mode !== 'protein');
   $('dna-options').classList.toggle('hidden', mode !== 'dna');
   $('search-btn-label').textContent = `Run ${cfg.name.toLowerCase()} search`;
@@ -1242,14 +1273,14 @@ async function loadById(id, mode, { quietErrors = false } = {}) {
 /* ---------------------------------------------------------------------------
    Run a search (request body identical to the original)
    --------------------------------------------------------------------------- */
-function pipelineSteps(mode, metrics, label, includeGenomic) {
+function pipelineSteps(mode, metrics, label, includeGenomic, filter) {
   const steps = [];
   const cfg = MODES[mode];
-  if (mode === 'protein') {
-    steps.push({ label: 'Pre-filter candidates', detail: `${cfg.filterK}-mer index keeps the ${cfg.candidates} closest protein isoforms`, color: 'var(--ink-4)' });
+  const pool = mode === 'dna' && includeGenomic ? 'mRNAs and genomic gene sequences' : cfg.pool;
+  if (filter.on) {
+    steps.push({ label: 'Pre-filter candidates', detail: `${filter.k}-mer index keeps the ${cfg.candidates} closest ${pool}`, color: 'var(--ink-4)' });
   } else {
-    const pool = includeGenomic ? 'mRNAs and genomic gene sequences' : 'mRNAs';
-    steps.push({ label: 'Pre-filter candidates', detail: `${cfg.filterK}-mer index keeps the ${cfg.candidates} closest ${pool}`, color: 'var(--ink-4)' });
+    steps.push({ label: 'No pre-filter', detail: `Scores every one of the ${pool}`, color: 'var(--ink-4)' });
   }
   if (metrics.includes('blosum')) steps.push({ label: mode === 'dna' ? 'DNA local alignment' : 'BLOSUM62 local alignment', detail: 'Runs in parallel across CPU cores', color: METRIC_HEX.blosum });
   if (metrics.includes('kmer'))   steps.push({ label: `K-mer similarity, k = ${MODES[mode].kmerK}`, detail: 'Jaccard index of shared words', color: METRIC_HEX.kmer });
@@ -1274,7 +1305,9 @@ async function runSearch() {
   }
 
   const sortBy = getRankBy();
-  const body = { input_type: 'sequence', seq_mode: mode, sequence: seq, metrics, top_n: topN, sort_by: sortBy };
+  const filter = { ...prefilter[mode] };
+  const body = { input_type: 'sequence', seq_mode: mode, sequence: seq, metrics, top_n: topN, sort_by: sortBy,
+                 prefilter: filter.on, filter_k: filter.k };
   if (mode === 'protein') {
     const [gapExistence, gapExtension] = $('gap-costs').value.split(',').map(Number);
     body.gap_existence = gapExistence;
@@ -1289,12 +1322,13 @@ async function runSearch() {
   searchAbort = controller;
   const hints = [{ after: 12000, text: 'Alignment-based metrics take longer on long sequences.' }];
   if (mode === 'dna') hints.push({ after: 25000, text: 'Long nucleotide queries take longer, and edit distance on mRNAs can take several minutes.' });
+  if (!filter.on) hints.push({ after: 30000, text: 'The k-mer pre-filter is off, so every sequence in the database is being scored.' });
 
   GS.showDNA(
     `Running ${MODES[mode].name.toLowerCase()} similarity search`,
     `${label || 'Unnamed query'}, ${parsedLen.toLocaleString('en-US')} ${MODES[mode].unit}, ranked by ${rankName(effectiveRank(metrics, sortBy))}`,
     {
-      steps: pipelineSteps(mode, metrics, label, body.include_genomic),
+      steps: pipelineSteps(mode, metrics, label, body.include_genomic, filter),
       hints,
       onCancel: () => controller.abort()
     }
@@ -1432,6 +1466,11 @@ function renderResults(data, metrics, elapsed) {
     ['Search type', cfg.name],
   ];
   if (data.gap_costs && metrics.includes('blosum')) facts.push(['Gap costs', `${data.gap_costs[0]} / ${data.gap_costs[1]}`]);
+  if (data.prefilter) {
+    facts.push(['Pre-filter', data.prefilter.enabled
+      ? `k = ${data.prefilter.k}<small>${data.prefilter.scored.toLocaleString('en-US')} scored</small>`
+      : 'Off']);
+  }
   if (metrics.includes('kmer')) facts.push(['K-mer size', `k = ${data.kmer_k}`]);
   if (elapsed !== undefined && elapsed !== null) facts.push(['Search time', `${elapsed < 10 ? elapsed.toFixed(1) : Math.round(elapsed)}<small>s</small>`]);
   $('result-stats').innerHTML = facts.map(([k, v]) => `<div class="fact"><div class="k">${esc(k)}</div><div class="v">${v}</div></div>`).join('');
@@ -1918,6 +1957,38 @@ function updateSlider() {
   $('top-n-val').textContent = r.value;
 }
 
+function paintRange(r) {
+  const pct = ((r.value - r.min) / (r.max - r.min)) * 100;
+  r.style.setProperty('--pct', pct + '%');
+}
+
+// Show a tab's pre-filter settings in the controls
+function loadPrefilter(mode) {
+  const cfg = MODES[mode], st = prefilter[mode], r = $('prefilter-k');
+  $('prefilter-toggle').checked = st.on;
+  r.min = cfg.filterKMin;
+  r.max = cfg.filterKMax;
+  r.value = st.k;
+  updatePrefilterUI();
+}
+
+function updatePrefilterUI() {
+  const mode = currentMode, cfg = MODES[mode], st = prefilter[mode], r = $('prefilter-k');
+  st.on = $('prefilter-toggle').checked;
+  st.k = parseInt(r.value, 10);
+  paintRange(r);
+  $('prefilter-k-val').textContent = st.k;
+  $('prefilter-k-field').classList.toggle('hidden', !st.on);
+  $('prefilter-warning').classList.toggle('hidden', st.on);
+  $('prefilter-hint').textContent = st.on
+    ? `Keeps the ${cfg.candidates} ${cfg.pool} whose k-mers best match the query, then scores only those.`
+    : `Off: every one of the ${cfg.pool} is scored.`;
+  const words = Math.pow(cfg.alphabet, st.k).toLocaleString('en-US');
+  const isDefault = st.k === cfg.filterK ? ' (default)' : '';
+  $('prefilter-k-hint').textContent =
+    `k = ${st.k}${isDefault}: ${words} possible words. Larger k is stricter: fewer chance matches, but distant relatives may be missed.`;
+}
+
 (function wire() {
   const ta = $('gene-seq'), editor = $('editor');
   ta.addEventListener('input', onSeqInput);
@@ -1937,6 +2008,8 @@ function updateSlider() {
   for (const m of METRIC_ORDER) $(`metric-${m}`).addEventListener('change', updateWarnings);
   document.querySelectorAll('input[name="rank-by"]').forEach(r => r.addEventListener('change', updateWarnings));
   $('top-n').addEventListener('input', updateSlider);
+  $('prefilter-toggle').addEventListener('change', updatePrefilterUI);
+  $('prefilter-k').addEventListener('input', updatePrefilterUI);
   $('results-search').addEventListener('input', filterResults);
 
   $('run-kbd').textContent = isMac ? '⌘ ↵' : 'Ctrl ↵';

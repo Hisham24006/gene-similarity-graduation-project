@@ -45,6 +45,13 @@ PROTEIN_CANDIDATES = 80
 # On 12 test queries, 500 candidates kept 13 of the 14 hits scoring >= 0.1.
 DNA_FILTER_K = 8          # k-mer size of the nucleotide filter index
 DNA_CANDIDATES = 500
+PROTEIN_FILTER_K = KMER_K # k-mer size of the protein filter index
+
+# Filter k values the Search page may choose, as (min, max). The nucleotide
+# index packs each k-mer into 16 bits, so it supports k <= 8. Larger protein
+# k values make the set-based index use far more memory.
+PROTEIN_FILTER_K_RANGE = (2, 5)
+DNA_FILTER_K_RANGE = (4, 8)
 PROMOTER_BP = 1000
 PSEUDOCOUNT = 0.5
 SCORE_THRESHOLD_FRACTION = 0.80

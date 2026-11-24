@@ -127,6 +127,10 @@ def get_candidate_sequences(query_sequence, all_sequences, k=3, top_n=20, index=
     by Jaccard similarity (see find_candidates).
     """
     if index is None:
+        if not get_kmers(query_sequence, k):
+            # Query shorter than k: it has no k-mers, so the filter cannot
+            # rank. Score everything, as get_dna_candidates does.
+            return list(all_sequences)
         index, sizes, sequence_lookup = get_search_index(all_sequences, k)
         candidates = find_candidates(query_sequence, index, k, top_n, sizes)
         return [

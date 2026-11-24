@@ -94,7 +94,7 @@ Then open your browser to `http://localhost:5000`
 
 The web app has four pages:
 
-- **Search** — Enter a gene name or paste a sequence (protein or DNA). Toggle which metrics to run, set result count, and view ranked results with color-coded score bars. Includes a filter box to search within results and a recent searches panel.
+- **Search** — Enter a gene name or paste a sequence (protein or DNA). Toggle which metrics to run, set result count, turn the k-mer candidate pre-filter on or off and choose its k (protein 2–5, nucleotide 4–8), and view ranked results with color-coded score bars. Includes a filter box to search within results and a recent searches panel.
 - **Database** — Browse all 18,000+ genes with isoform counts, descriptions, and a sequence viewer that shows full FASTA sequences with a copy button.
 - **Visualizations** — View bar charts and heatmaps generated automatically after each search.
 - **Benchmark** — Run a speed and accuracy comparison across all four metrics on a configurable number of random gene pairs.
