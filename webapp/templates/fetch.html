@@ -83,7 +83,7 @@
 .record-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 16px; }
 .record-kicker { font-size: 13px; color: var(--ink-3); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .record-title { margin-top: 6px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
-.record-title h2 { font-family: var(--font-serif); font-size: 34px; font-weight: 500; letter-spacing: -.015em; line-height: 1.1; color: var(--ink); word-break: break-all; }
+.record-title h2 { font-family: var(--font-sans); font-size: 32px; font-weight: 600; letter-spacing: -.02em; line-height: 1.1; color: var(--ink); word-break: break-all; }
 .record-title a.acc { font-family: var(--font-mono); font-size: 13.5px; color: var(--ink-2); display: inline-flex; gap: 6px; align-items: center; }
 .record-title a.acc svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .record-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
@@ -603,7 +603,7 @@ function renderFetchedResult(data) {
   const kicker = [`<span class="tag tag-dot" style="color:var(--info)">${esc(data.source)}</span>`,
                   `<span class="tag">${typeLabel}</span>`];
   if (data.query_kind === 'accession' && data.accession_kind) kicker.push(`<span class="tag">${esc(data.accession_kind)} accession</span>`);
-  if (data.organism) kicker.push(`<span class="tag" style="font-style:italic">${esc(data.organism)}</span>`);
+  if (data.organism) kicker.push(`<span class="tag">${esc(data.organism)}</span>`);
   $('record-kicker').innerHTML = kicker.join('');
   $('record-symbol').textContent = data.symbol;
   const accLink = $('record-acc');
