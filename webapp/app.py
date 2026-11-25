@@ -9,6 +9,7 @@ import json
 import base64
 import time
 import random
+import re
 import threading
 import multiprocessing
 import platform
@@ -682,6 +683,53 @@ def get_cpu_info():
 BENCH_MAX_LEN = 1000  # longest protein (amino acids) used in the benchmark
 
 
+def pick_benchmark_pairs(genes, tf_cache, n_pairs, seed=42):
+    """
+    Pick gene pairs for the benchmark as a mix of three groups.
+
+    Purely random pairs are almost always unrelated genes, so every metric
+    gives them similar low scores and the Pearson correlation with BLOSUM62
+    is just noise. To give the scores a real range, the pairs are split into:
+      - family pairs : two genes from the same family (same symbol prefix,
+                       e.g. KRT5 / KRT14), which are often related
+      - motif pairs  : two genes that have cached JASPAR TF data, so the
+                       Motif correlation has real data to work with
+      - random pairs : unrelated background pairs
+    The seed is fixed, so the same count always tests the same pairs.
+    """
+    rng = random.Random(seed)
+    gene_set = set(genes)
+    total = len(genes) * (len(genes) - 1) // 2
+    n_pairs = min(n_pairs, total)
+
+    families = {}
+    for g in genes:
+        m = re.match(r'^([A-Z]{3,})\d', g)
+        if m:
+            families.setdefault(m.group(1), []).append(g)
+    family_keys = sorted(k for k, v in families.items() if len(v) >= 2)
+    motif_genes = sorted(g for g in tf_cache if g in gene_set)
+
+    n_motif = min(max(3, n_pairs // 3), n_pairs) if len(motif_genes) >= 2 else 0
+    n_motif = min(n_motif, len(motif_genes) * (len(motif_genes) - 1) // 2)
+    n_family = (n_pairs - n_motif) // 2 if family_keys else 0
+
+    chosen = set()
+
+    def add_pairs(count, draw):
+        target = len(chosen) + count
+        tries = 0
+        while len(chosen) < target and tries < count * 50:
+            tries += 1
+            a, b = draw()
+            chosen.add((a, b) if a < b else (b, a))
+
+    add_pairs(n_motif, lambda: rng.sample(motif_genes, 2))
+    add_pairs(n_family, lambda: rng.sample(families[rng.choice(family_keys)], 2))
+    add_pairs(n_pairs - len(chosen), lambda: rng.sample(genes, 2))
+    return sorted(chosen)
+
+
 @app.route('/api/benchmark', methods=['POST'])
 def api_benchmark():
     n_pairs = int(request.json.get('n_pairs', 20))
@@ -695,27 +743,22 @@ def api_benchmark():
         if symbol not in seen:
             seen[symbol] = seq
 
-    # The database holds ~20,000 genes, so we must NOT build a list of every
-    # possible pair (about 200 million) or look up TF data for every gene.
-    # Pick the random pairs directly, and skip very long proteins because the
-    # pure-Python edit distance would take minutes on them.
-    genes = sorted(s for s, seq in seen.items() if len(seq) <= BENCH_MAX_LEN)
-    rng = random.Random(42)
-    n_wanted = min(n_pairs, len(genes) * (len(genes) - 1) // 2)
-    chosen = set()
-    while len(chosen) < n_wanted:
-        a, b = rng.sample(genes, 2)
-        chosen.add((a, b) if a < b else (b, a))
-    pairs = sorted(chosen)
-
-    # Motif data: only read what is already cached (no internet requests).
-    # Genes without cached TF data are left out of the Motif correlation.
+    # Load the TF cache first: genes that have Motif data are needed to
+    # pick the "motif" share of the pairs below.
     tf_cache = {}
     try:
         with open(TF_CACHE_PATH, 'r') as f:
             tf_cache = json.load(f)
     except (OSError, ValueError):
         pass
+
+    # Skip very long proteins because the pure-Python edit distance would
+    # take minutes on them.
+    genes = sorted(s for s, seq in seen.items() if len(seq) <= BENCH_MAX_LEN)
+    pairs = pick_benchmark_pairs(genes, tf_cache, n_pairs)
+
+    # Motif data: only read what is already cached (no internet requests).
+    # Genes without cached TF data are left out of the Motif correlation.
     tf_map = {s: set(tf_cache[s]) for s in {g for p in pairs for g in p} if s in tf_cache}
 
     metric_data = {
