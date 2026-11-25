@@ -131,7 +131,7 @@ table.bench td:first-child, table.bench th:first-child { padding-left: 20px; }
   <div class="wrap hero-inner">
     <div>
       <h1 class="page-title">Metric benchmark</h1>
-      <p class="page-sub">Time all four similarity metrics on the same random protein pairs and see how closely each one agrees with BLOSUM62 alignment, on this machine.</p>
+      <p class="page-sub">Time all four similarity metrics on the same protein pairs (related families, motif genes and random pairs) and see how closely each one agrees with BLOSUM62 alignment, on this machine.</p>
     </div>
   </div>
 </section>
@@ -179,7 +179,7 @@ table.bench td:first-child, table.bench th:first-child { padding-left: 20px; }
         <p>Choose how many gene pairs to test, then run the benchmark. Results stay on this page and also appear on Visualizations, and the next run is compared with this one.</p>
       </div>
       <div class="steps">
-        <div><b>Pick random pairs</b><span>Protein sequences from the local database, one per gene.</span></div>
+        <div><b>Pick gene pairs</b><span>A mix of gene-family, motif-gene and random pairs, one protein per gene.</span></div>
         <div><b>Time every metric</b><span>Wall-clock and CPU time for each comparison, per metric.</span></div>
         <div><b>Measure agreement</b><span>Pearson correlation of each metric's scores with BLOSUM62.</span></div>
       </div>
@@ -345,9 +345,9 @@ async function runBenchmark() {
   const nPairs = parseInt($('n-pairs').value, 10);
   const controller = new AbortController();
   benchAbort = controller;
-  GS.showDNA('Running benchmark', `Timing four metrics on ${nPairs} random gene pairs`, {
+  GS.showDNA('Running benchmark', `Timing four metrics on ${nPairs} gene pairs`, {
     steps: [
-      { label: 'Pick random protein pairs', detail: 'One sequence per gene, fixed seed', color: 'var(--ink-4)' },
+      { label: 'Pick gene pairs', detail: 'Family, motif and random pairs, fixed seed', color: 'var(--ink-4)' },
       { label: 'Load promoter motif sets', detail: 'Cached JASPAR transcription factor sets for each gene', color: METRIC_META.motif.color },
       { label: 'Time BLOSUM62, k-mer, edit distance and motif', detail: `${nPairs} comparisons each, wall and CPU time`, color: METRIC_META.blosum.color },
       { label: 'Correlate every metric with BLOSUM62', color: 'var(--ink-4)' },
